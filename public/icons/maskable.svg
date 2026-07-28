@@ -1,0 +1,5 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bursar">
+  <rect width="512" height="512" fill="#0d5c4a"/>
+  <path d="M206 176h92a60 60 0 0 1 0 120h-92zM206 296h104a60 60 0 0 1 0 120H206zM206 176v240"
+        fill="none" stroke="#ffffff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

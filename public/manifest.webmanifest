@@ -1,0 +1,26 @@
+{
+  "name": "Bursar — School Management",
+  "short_name": "Bursar",
+  "description": "Student records, fees, and every payment accounted for in one place.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7f6",
+  "theme_color": "#0d5c4a",
+  "categories": ["education", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

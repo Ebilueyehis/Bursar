@@ -1,0 +1,101 @@
+import type {
+  Payment,
+  PaymentMethod,
+  Role,
+  School,
+  SchoolClass,
+  Session,
+  Student,
+  StudentAccount,
+  TermName,
+  UserProfile,
+} from "@/lib/domain/types";
+
+/**
+ * The single interface the UI uses to read and write data. Today it is backed
+ * by an in-memory mock (mock.ts). When Supabase is connected we implement the
+ * same interface against Postgres — no screen has to change.
+ *
+ * All methods are async on purpose: real reads come from the network or the
+ * offline cache, and the UI is built to await them from day one.
+ */
+export interface Repository {
+  getSchool(): Promise<School>;
+  getSession(): Promise<Session>;
+  listUsers(): Promise<UserProfile[]>;
+  listClasses(): Promise<SchoolClass[]>;
+
+  /** Dashboard headline numbers for a term. */
+  getDashboardStats(term: TermName): Promise<DashboardStats>;
+
+  /** Every student's account (bill vs payments) for a term. */
+  listStudentAccounts(term: TermName): Promise<StudentAccount[]>;
+
+  /**
+   * Students with an outstanding balance for the term, sorted oldest bill
+   * first — "so you always know who to follow up with first."
+   */
+  listDebtors(term: TermName): Promise<StudentAccount[]>;
+
+  getStudentAccount(studentId: string, term: TermName): Promise<StudentAccount | null>;
+
+  listStudents(): Promise<Student[]>;
+
+  /** Record a payment received. Returns the created payment (with receipt no.). */
+  recordPayment(input: RecordPaymentInput): Promise<Payment>;
+
+  /** Bulk import parsed student rows. Returns per-row results. */
+  importStudents(rows: ImportStudentRow[]): Promise<ImportResult>;
+}
+
+export interface DashboardStats {
+  term: TermName;
+  studentCount: number;
+  /** Total billed for the term across all students. */
+  totalBilled: number;
+  totalCollected: number;
+  totalOutstanding: number;
+  debtorCount: number;
+  fullyPaidCount: number;
+  partialCount: number;
+  unpaidCount: number;
+}
+
+export interface RecordPaymentInput {
+  studentId: string;
+  term: TermName;
+  amount: number; // kobo
+  method: PaymentMethod;
+  note?: string;
+  recordedByName: string;
+}
+
+export interface ImportStudentRow {
+  firstName: string;
+  lastName: string;
+  otherName?: string;
+  gender?: string;
+  className: string;
+  guardianName: string;
+  guardianPhone: string;
+  guardianRelationship?: string;
+}
+
+export interface ImportRowResult {
+  rowNumber: number;
+  ok: boolean;
+  studentName: string;
+  error?: string;
+}
+
+export interface ImportResult {
+  imported: number;
+  failed: number;
+  results: ImportRowResult[];
+}
+
+/** The active repository. Swap this line to change backends. */
+export { mockRepository as repository } from "@/lib/data/mock";
+
+/** For the prototype only: which role the viewer is currently acting as. */
+export type ViewerRole = Role;

@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/*
+  Bursar design system
+  Voice: Respectful, Clear, Confident. Calm, not hype.
+  Money is the hero: high contrast, tabular figures, one meaning per element.
+  Mobile-first: large tap targets, generous spacing, legible type.
+*/
+
+:root {
+  /* Neutrals — warm, paper-like, easy on cheap screens in daylight */
+  --background: #f6f7f6;
+  --surface: #ffffff;
+  --surface-sunken: #f0f2f1;
+  --ink: #10201b; /* primary text */
+  --ink-muted: #566661; /* secondary text */
+  --ink-faint: #8a9994; /* tertiary / placeholder */
+  --border: #e2e8e5;
+  --border-strong: #cbd5d0;
+
+  /* Brand — deep teal: money, trust, calm (distinct from hype-green) */
+  --primary: #0d5c4a;
+  --primary-hover: #0a4a3c;
+  --primary-tint: #e7f2ee;
+  --on-primary: #ffffff;
+
+  /* Semantic — money states, one meaning each */
+  --success: #157347; /* paid / positive */
+  --success-tint: #e6f4ec;
+  --warning: #b45309; /* partial / owing */
+  --warning-tint: #fdf1e3;
+  --danger: #b42318; /* overdue / error */
+  --danger-tint: #fdecea;
+
+  --ring: #0d5c4a;
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-tint: var(--primary-tint);
+  --color-on-primary: var(--on-primary);
+
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-lg: var(--radius);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  /* Prevent iOS text auto-zoom while keeping inputs >=16px */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, Arial, sans-serif;
+  /* Safe-area padding for installed PWA on notched phones */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Money and any figure that must align in a column */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Accessible focus ring for keyboard + switch users */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
