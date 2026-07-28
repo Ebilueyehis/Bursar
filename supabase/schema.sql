@@ -153,7 +153,11 @@ create index on payments (school_id, paid_on);
 -- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
 -- ---------------------------------------------------------------------------
-create view student_balances as
+-- security_invoker = on is REQUIRED: without it the view runs as its owner
+-- (postgres) and BYPASSES RLS on the base tables, leaking every school's
+-- finances to any user who can read the view. With it on, the view enforces
+-- the querying user's RLS, so each user sees only their own school.
+create view student_balances with (security_invoker = on) as
 select
   b.id                                as bill_id,
   b.school_id,
@@ -252,6 +256,46 @@ create policy manage_bill_lines on bill_lines
 
 -- Payments: Proprietor and Bursar may INSERT (record). No update/delete
 -- policy exists, so receipts are append-only and cannot be altered/removed.
+-- WITH CHECK also binds the receipt to the caller's own school AND verifies the
+-- referenced bill/student belong to that school, so a Bursar can't attach a
+-- receipt to another school's bill or impersonate another recorder.
 create policy record_payment on payments
-  for insert
-  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
+  for insert to authenticated
+  with check (
+    school_id = auth_school_id()
+    and auth_role() in ('proprietor','bursar')
+    and (recorded_by is null or recorded_by = auth.uid())
+    and exists (select 1 from bills b
+                where b.id = bill_id and b.school_id = auth_school_id())
+    and exists (select 1 from students s
+                where s.id = student_id and s.school_id = auth_school_id())
+  );
+
+-- ============================================================================
+-- Grants — least privilege for the PostgREST API roles
+-- ============================================================================
+-- anon (logged-out) gets nothing: Bursar requires a signed-in account. The
+-- default TRUNCATE/REFERENCES/TRIGGER grants are a data-destruction primitive
+-- and are removed. authenticated may run DML; RLS still governs which rows.
+revoke all on all tables in schema public from anon;
+revoke all on all tables in schema public from authenticated;
+
+grant select, insert, update, delete on table
+  schools, profiles, sessions, classes, guardians, students,
+  fee_items, bills, bill_lines, payments
+  to authenticated;
+grant select on table student_balances to authenticated;  -- view is read-only
+
+-- Helper functions grant EXECUTE to PUBLIC by default. Remove that and hand it
+-- back only to authenticated, which the RLS policies require. anon loses it.
+revoke execute on function auth_role() from public;
+revoke execute on function auth_school_id() from public;
+grant execute on function auth_role() to authenticated;
+grant execute on function auth_school_id() to authenticated;
+
+-- NOTE: profiles has SELECT-only RLS by design — there is NO insert/update
+-- policy, so a signed-in user can never create or alter their own profile row
+-- (and therefore cannot self-assign role = 'proprietor'). Provisioning a
+-- profile and its role must happen server-side with the service_role key
+-- (e.g. an admin invite flow or a SECURITY DEFINER signup function), never
+-- from the client.
