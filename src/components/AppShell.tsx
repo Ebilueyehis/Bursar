@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useViewer } from "@/lib/viewer";
 import { ROLE_LABELS, TERMS, can } from "@/lib/domain/constants";
-import type { Role } from "@/lib/domain/types";
 import { cn } from "@/components/ui";
+import { createClient } from "@/lib/supabase/client";
 import { useOnline } from "@/lib/useOnline";
 import {
   DashboardIcon,
@@ -108,7 +108,7 @@ function Sidebar() {
 
       <div className="mt-auto space-y-3 pt-6">
         <TermSelector variant="dark" />
-        <RoleSwitcher role={role} variant="dark" />
+        <UserChip variant="dark" />
       </div>
     </aside>
   );
@@ -117,7 +117,7 @@ function Sidebar() {
 // --- Mobile top bar ----------------------------------------------------------
 
 function TopBar() {
-  const { school, role } = useViewer();
+  const { school } = useViewer();
   const online = useOnline();
 
   return (
@@ -139,7 +139,7 @@ function TopBar() {
               Offline
             </span>
           )}
-          <RoleSwitcher role={role} variant="light" />
+          <UserChip variant="light" />
         </div>
       </div>
       <div className="px-4 pb-2.5 pt-2">
@@ -204,29 +204,44 @@ function TermSelector({ variant }: { variant: "light" | "dark" }) {
   );
 }
 
-// --- Shared: role switcher (prototype only) ----------------------------------
+// --- Shared: user chip + sign out --------------------------------------------
 
-function RoleSwitcher({
-  role,
-  variant,
-}: {
-  role: Role;
-  variant: "light" | "dark";
-}) {
-  const { setRole } = useViewer();
+function UserChip({ variant }: { variant: "light" | "dark" }) {
+  const { actorName, role } = useViewer();
   const dark = variant === "dark";
+  const initials = actorName
+    ? actorName
+        .split(" ")
+        .filter(Boolean)
+        .slice(-2)
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    : "•";
+
+  async function signOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
   return (
     <details className="group relative">
       <summary
         className={cn(
-          "flex cursor-pointer list-none items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold [&::-webkit-details-marker]:hidden",
-          dark
-            ? "border-white/20 text-[#EDEFF2]"
-            : "border-border bg-surface-raised text-ink",
+          "flex cursor-pointer list-none items-center gap-2 rounded-full border px-2 py-1 text-xs font-semibold [&::-webkit-details-marker]:hidden",
+          dark ? "border-white/15 text-[#EDEFF2]" : "border-border bg-surface-raised text-ink",
         )}
       >
-        <span className="size-2 rounded-full bg-primary" />
-        {ROLE_LABELS[role]}
+        <span
+          className={cn(
+            "flex size-6 items-center justify-center rounded-full text-[10px] font-bold",
+            dark ? "bg-white/15 text-white" : "bg-primary-tint text-primary",
+          )}
+        >
+          {initials}
+        </span>
+        <span className="max-w-24 truncate">{actorName || "Account"}</span>
       </summary>
       <div
         className={cn(
@@ -234,23 +249,16 @@ function RoleSwitcher({
           dark ? "bottom-full mb-1 left-0" : "right-0",
         )}
       >
-        <p className="px-3 py-1.5 text-xs text-ink-faint">View Bursar as…</p>
-        {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
-          <button
-            key={r}
-            onClick={(e) => {
-              setRole(r);
-              (e.currentTarget.closest("details") as HTMLDetailsElement).open = false;
-            }}
-            className={cn(
-              "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-surface-sunken",
-              r === role ? "font-semibold text-primary" : "text-ink",
-            )}
-          >
-            {ROLE_LABELS[r]}
-            {r === role && <span className="text-primary">✓</span>}
-          </button>
-        ))}
+        <div className="px-3 py-2">
+          <p className="truncate text-sm font-semibold text-ink">{actorName}</p>
+          <p className="text-xs text-ink-faint">{ROLE_LABELS[role]}</p>
+        </div>
+        <button
+          onClick={signOut}
+          className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-danger hover:bg-surface-sunken"
+        >
+          Sign out
+        </button>
       </div>
     </details>
   );

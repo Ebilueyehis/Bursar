@@ -180,6 +180,50 @@ export const mockRepository: Repository = {
     return payment;
   },
 
+  async createStudent(input): Promise<Student> {
+    await tick();
+    const cls = CLASSES.find((c) => c.id === input.classId);
+    if (!cls) throw new Error("Class not found.");
+    const gId = `g-new-${Date.now()}`;
+    GUARDIANS.push({
+      id: gId,
+      schoolId: SCHOOL.id,
+      fullName: input.guardianName,
+      phone: input.guardianPhone,
+      relationship: input.guardianRelationship,
+    });
+    const sId = `s-new-${Date.now()}`;
+    const seq = STUDENTS.length + 1;
+    const student: Student = {
+      id: sId,
+      schoolId: SCHOOL.id,
+      admissionNo: `${SCHOOL.code}/${new Date().getFullYear()}/${String(seq).padStart(3, "0")}`,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      otherName: input.otherName,
+      gender: input.gender,
+      dateOfBirth: input.dateOfBirth,
+      classId: cls.id,
+      guardianId: gId,
+      status: "active",
+      enrolledOn: new Date().toISOString().slice(0, 10),
+    };
+    STUDENTS.push(student);
+    if (input.termFeeKobo > 0) {
+      BILLS.push({
+        id: `b-new-${Date.now()}`,
+        schoolId: SCHOOL.id,
+        studentId: sId,
+        sessionId: SESSION.id,
+        term: SCHOOL.currentTerm,
+        lines: [{ name: "Term fee", amount: input.termFeeKobo }],
+        discount: 0,
+        createdOn: new Date().toISOString().slice(0, 10),
+      });
+    }
+    return student;
+  },
+
   async importStudents(rows: ImportStudentRow[]): Promise<ImportResult> {
     await tick();
     const results: ImportRowResult[] = [];

@@ -44,8 +44,25 @@ export interface Repository {
   /** Record a payment received. Returns the created payment (with receipt no.). */
   recordPayment(input: RecordPaymentInput): Promise<Payment>;
 
+  /** Create a single student (+ guardian, + this term's bill). Fixes "add student". */
+  createStudent(input: CreateStudentInput): Promise<Student>;
+
   /** Bulk import parsed student rows. Returns per-row results. */
   importStudents(rows: ImportStudentRow[]): Promise<ImportResult>;
+}
+
+export interface CreateStudentInput {
+  firstName: string;
+  lastName: string;
+  otherName?: string;
+  gender?: "male" | "female";
+  dateOfBirth?: string;
+  religion?: string;
+  classId: string;
+  termFeeKobo: number;
+  guardianName: string;
+  guardianPhone: string;
+  guardianRelationship?: string;
 }
 
 export interface DashboardStats {
@@ -95,7 +112,7 @@ export interface ImportResult {
 }
 
 /** The active repository. Swap this line to change backends. */
-export { mockRepository as repository } from "@/lib/data/mock";
+export { supabaseRepository as repository } from "@/lib/data/supabase-repo";
 
 /** For the prototype only: which role the viewer is currently acting as. */
 export type ViewerRole = Role;

@@ -15,7 +15,7 @@ import {
   StatusPill,
   cn,
 } from "@/components/ui";
-import { ChevronRightIcon, StudentsIcon, UploadIcon } from "@/components/icons";
+import { ChevronRightIcon, PlusIcon, StudentsIcon, UploadIcon } from "@/components/icons";
 import { Avatar } from "@/app/debtors/page";
 
 export default function StudentsPage() {
@@ -52,13 +52,23 @@ export default function StudentsPage() {
             {data ? `${data.length} students` : "…"}
           </p>
         </div>
-        {can(role, "import_students") && (
-          <Link href="/students/import">
-            <Button variant="secondary" className="min-h-10 px-3 text-sm">
-              <UploadIcon width={18} height={18} />
-              Import
-            </Button>
-          </Link>
+        {can(role, "manage_students") && (
+          <div className="flex gap-2">
+            {can(role, "import_students") && (
+              <Link href="/students/import">
+                <Button variant="secondary" className="min-h-10 px-3 text-sm">
+                  <UploadIcon width={18} height={18} />
+                  Import
+                </Button>
+              </Link>
+            )}
+            <Link href="/students/new">
+              <Button className="min-h-10 px-3 text-sm">
+                <PlusIcon width={18} height={18} />
+                Add student
+              </Button>
+            </Link>
+          </div>
         )}
       </div>
 

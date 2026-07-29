@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { DEFAULT_CLASS_LEVELS } from "@/lib/domain/constants";
 
 export interface OnboardingResult {
   error?: string;
@@ -98,6 +99,16 @@ export async function createSchool(
   if (profErr) {
     return { error: "Couldn't finish setting up your account. Please try again." };
   }
+
+  // Seed a starter set of Nigerian class levels so Add Student works right away.
+  // The Proprietor can rename, remove, or add sections later.
+  await admin.from("classes").insert(
+    DEFAULT_CLASS_LEVELS.map((level) => ({
+      school_id: school.id,
+      level,
+      name: level,
+    })),
+  );
 
   redirect("/");
 }
