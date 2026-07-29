@@ -67,7 +67,9 @@ export async function createSchool(
     .select("id")
     .single();
   if (schoolErr || !school) {
-    return { error: "Couldn't create the school. Please try again." };
+    // Surface the real reason. "row-level security" here means the service key
+    // is wrong (running as anon/authenticated, not service_role).
+    return { error: `Couldn't create the school: ${schoolErr?.message ?? "unknown error"}` };
   }
 
   const { data: session, error: sessErr } = await admin
@@ -81,7 +83,7 @@ export async function createSchool(
     .select("id")
     .single();
   if (sessErr || !session) {
-    return { error: "Couldn't set up the session. Please try again." };
+    return { error: `Couldn't set up the session: ${sessErr?.message ?? "unknown error"}` };
   }
 
   await admin
@@ -97,7 +99,7 @@ export async function createSchool(
     email: user.email,
   });
   if (profErr) {
-    return { error: "Couldn't finish setting up your account. Please try again." };
+    return { error: `Couldn't finish setting up your account: ${profErr.message}` };
   }
 
   // Seed a starter set of Nigerian class levels so Add Student works right away.
