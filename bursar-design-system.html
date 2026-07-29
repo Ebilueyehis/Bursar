@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bursar — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A3C;
+    --ink-soft:#4A5568;
+    --paper:#F2EFE6;
+    --card:#FBFAF5;
+    --rule:#DCD6C4;
+    --green:#2F6F4E;
+    --green-soft:#E1EBE3;
+    --brass:#A9793A;
+    --brass-soft:#F2E8D4;
+    --brick:#9C4234;
+    --brick-soft:#F1E1DC;
+    --slate:#54677F;
+    --slate-soft:#E6E9ED;
+    --radius:10px;
+    --font-display:'Manrope',sans-serif;
+    --font-body:'Inter',sans-serif;
+    --font-mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--font-body);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 32px 120px;}
+  .masthead{border-bottom:2px solid var(--ink);padding-bottom:28px;margin-bottom:48px;display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;}
+  .masthead h1{font-family:var(--font-display);font-weight:800;font-size:38px;margin:0 0 6px;letter-spacing:-0.01em;}
+  .masthead p{margin:0;color:var(--ink-soft);font-size:15px;max-width:520px;}
+  .stamp{font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;border:1.5px solid var(--ink);border-radius:999px;padding:6px 14px;color:var(--ink);white-space:nowrap;}
+
+  section{margin-bottom:64px;}
+  .section-label{font-family:var(--font-mono);font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--brass);margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+  .section-label::after{content:"";flex:1;height:1px;background:var(--rule);}
+  h2{font-family:var(--font-display);font-weight:700;font-size:24px;margin:0 0 8px;}
+  .section-intro{color:var(--ink-soft);font-size:14.5px;max-width:640px;margin-bottom:28px;}
+
+  /* Color swatches */
+  .swatch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;}
+  .swatch{border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden;background:var(--card);}
+  .swatch-fill{height:74px;}
+  .swatch-meta{padding:12px 14px;}
+  .swatch-meta .name{font-weight:600;font-size:13.5px;}
+  .swatch-meta .hex{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+  .swatch-meta .use{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+
+  /* Type scale */
+  .type-row{display:flex;align-items:baseline;gap:24px;padding:16px 0;border-top:1px solid var(--rule);}
+  .type-row:last-child{border-bottom:1px solid var(--rule);}
+  .type-label{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);width:150px;flex-shrink:0;}
+  .t-display{font-family:var(--font-display);font-weight:800;}
+  .t-heading{font-family:var(--font-display);font-weight:700;}
+  .t-body{font-family:var(--font-body);font-weight:400;}
+  .t-mono{font-family:var(--font-mono);font-weight:600;}
+
+  /* Component grid */
+  .comp-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  @media(max-width:820px){.comp-grid{grid-template-columns:1fr;}}
+  .comp-card{background:var(--card);border:1px solid var(--rule);border-radius:var(--radius);padding:24px;}
+  .comp-card h3{font-family:var(--font-display);font-size:15px;margin:0 0 16px;font-weight:700;}
+  .comp-card .caption{font-size:12.5px;color:var(--ink-soft);margin-top:14px;border-top:1px dashed var(--rule);padding-top:12px;}
+
+  /* Buttons */
+  .btn-row{display:flex;flex-wrap:wrap;gap:10px;}
+  .btn{font-family:var(--font-body);font-weight:600;font-size:13.5px;border-radius:8px;padding:10px 18px;border:1.5px solid transparent;cursor:pointer;}
+  .btn-primary{background:var(--green);color:#fff;}
+  .btn-secondary{background:transparent;border-color:var(--ink);color:var(--ink);}
+  .btn-ghost{background:var(--slate-soft);color:var(--ink);}
+  .btn-danger{background:var(--brick);color:#fff;}
+
+  /* Inputs */
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:var(--ink);}
+  .field input{width:100%;font-family:var(--font-body);font-size:14px;padding:10px 12px;border:1.5px solid var(--rule);border-radius:8px;background:#fff;color:var(--ink);}
+  .field .hint{font-size:11.5px;color:var(--ink-soft);margin-top:5px;}
+
+  /* Stamps / status */
+  .stamp-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1.5px solid currentColor;}
+  .stamp-paid{color:var(--green);background:var(--green-soft);}
+  .stamp-partial{color:var(--brass);background:var(--brass-soft);}
+  .stamp-unpaid{color:var(--brick);background:var(--brick-soft);}
+
+  /* Receipt (signature element) */
+  .receipt{background:#fff;border:1px solid var(--rule);border-radius:8px;position:relative;padding:22px 22px 18px;}
+  .receipt::before,.receipt::after{content:"";position:absolute;top:-1px;bottom:-1px;width:14px;background:
+    radial-gradient(circle 7px at 0 0, transparent 7px, var(--paper) 7.5px) top left/14px 14px repeat-y;}
+  .receipt::before{left:-1px;}
+  .receipt::after{right:-1px;transform:scaleX(-1);}
+  .receipt-head{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px dashed var(--rule);padding-bottom:12px;margin-bottom:12px;}
+  .receipt-line{display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0;}
+  .receipt-line .amt{font-family:var(--font-mono);font-weight:600;}
+  .receipt-total{display:flex;justify-content:space-between;border-top:1px dashed var(--rule);margin-top:10px;padding-top:12px;font-weight:700;}
+  .receipt-total .amt{font-family:var(--font-mono);font-size:16px;}
+
+  /* Table */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);font-weight:600;padding:0 10px 10px;border-bottom:1.5px solid var(--ink);}
+  td{padding:12px 10px;border-bottom:1px solid var(--rule);}
+  td.amt{font-family:var(--font-mono);font-weight:600;text-align:right;}
+  th.amt{text-align:right;}
+
+  /* Sidebar sample */
+  .app-demo{display:flex;border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden;background:var(--card);}
+  .app-sidebar{width:190px;background:var(--ink);color:#EDEFF2;padding:20px 14px;flex-shrink:0;}
+  .app-sidebar .brand{font-family:var(--font-display);font-weight:800;font-size:16px;margin-bottom:22px;letter-spacing:-0.01em;}
+  .app-sidebar .nav-item{font-size:13px;padding:9px 10px;border-radius:6px;margin-bottom:2px;color:#C7CCD4;}
+  .app-sidebar .nav-item.active{background:rgba(255,255,255,0.08);color:#fff;border-left:3px solid var(--brass);padding-left:7px;font-weight:600;}
+  .app-main{flex:1;padding:22px;min-width:0;}
+  .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;}
+  .kpi{background:#fff;border:1px solid var(--rule);border-radius:8px;padding:14px 16px;}
+  .kpi .label{font-size:11.5px;color:var(--ink-soft);}
+  .kpi .value{font-family:var(--font-mono);font-weight:600;font-size:19px;margin-top:4px;}
+
+  /* Banners */
+  .banner{border-radius:8px;padding:14px 16px;font-size:13.5px;border-left:4px solid;margin-bottom:12px;}
+  .banner-error{background:var(--brick-soft);border-color:var(--brick);}
+  .banner-success{background:var(--green-soft);border-color:var(--green);}
+  .banner-title{font-weight:700;margin-bottom:2px;}
+
+  .voice-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  .voice-table th{border-bottom:1.5px solid var(--ink);}
+  .voice-table td{vertical-align:top;padding:14px 10px;border-bottom:1px solid var(--rule);}
+  .voice-table .no{color:var(--brick);text-decoration:line-through;opacity:0.75;}
+  .voice-table .yes{color:var(--green);font-weight:500;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>Bursar</h1>
+      <p>A design system for the calm, competent school administrator every proprietor wishes they had. Built for clarity around money and records, not for delight around features.</p>
+    </div>
+    <div class="stamp">Design System · v1</div>
+  </div>
+
+  <section>
+    <div class="section-label">Foundation</div>
+    <h2>Why this system looks the way it does</h2>
+    <p class="section-intro">The reference dashboards this was built from lean on bright gradient sidebars, rainbow donut charts and playful rounded icon tiles: the visual language of "exciting new app." Bursar's job is the opposite. Its audience has been burned by disorder before: a missing receipt booklet, a wrongly dialled number, a vendor who overcharged because there was no record to check. What reassures that person is not enthusiasm, it's evidence of order. So this system trades gradients for ruled lines, trades five-colour pie charts for two-colour comparisons that are readable at a glance, and treats every amount of money as something that must line up, literally, in a fixed-width column, so nothing can be misread.</p>
+  </section>
+
+  <section>
+    <div class="section-label">Colour</div>
+    <h2>Ledger, not gradient</h2>
+    <p class="section-intro">Navy for authority and ink. Green for money that's accounted for. Brass for attention without alarm. Brick reserved only for things that are actually wrong. No colour appears purely for decoration.</p>
+    <div class="swatch-grid">
+      <div class="swatch"><div class="swatch-fill" style="background:#1B2A3C"></div><div class="swatch-meta"><div class="name">Ink Navy</div><div class="hex">#1B2A3C</div><div class="use">Sidebar, headings, primary text</div></div></div>
+      <div class="swatch"><div class="swatch-fill" style="background:#F2EFE6"></div><div class="swatch-meta"><div class="name">Paper</div><div class="hex">#F2EFE6</div><div class="use">App background</div></div></div>
+      <div class="swatch"><div class="swatch-fill" style="background:#2F6F4E"></div><div class="swatch-meta"><div class="name">Ledger Green</div><div class="hex">#2F6F4E</div><div class="use">Paid, income, primary actions</div></div></div>
+      <div class="swatch"><div class="swatch-fill" style="background:#A9793A"></div><div class="swatch-meta"><div class="name">Brass</div><div class="hex">#A9793A</div><div class="use">Partial, pending, secondary emphasis</div></div></div>
+      <div class="swatch"><div class="swatch-fill" style="background:#9C4234"></div><div class="swatch-meta"><div class="name">Brick</div><div class="hex">#9C4234</div><div class="use">Errors and unpaid balances only</div></div></div>
+      <div class="swatch"><div class="swatch-fill" style="background:#54677F"></div><div class="swatch-meta"><div class="name">Slate</div><div class="hex">#54677F</div><div class="use">Secondary text, neutral info</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Typography</div>
+    <h2>One face for authority, one for reading, one for numbers</h2>
+    <p class="section-intro">Manrope carries section titles and figures that need weight. Inter is the workhorse for every sentence a user reads. IBM Plex Mono is reserved entirely for money and dates, its fixed width means a ₦45,000 and a ₦4,500 can never be confused at a glance.</p>
+    <div>
+      <div class="type-row"><div class="type-label">Display / Manrope 800</div><div class="t-display" style="font-size:34px;">Every naira accounted for</div></div>
+      <div class="type-row"><div class="type-label">Heading / Manrope 700</div><div class="t-heading" style="font-size:20px;">Outstanding balances</div></div>
+      <div class="type-row"><div class="type-label">Body / Inter 400</div><div class="t-body" style="font-size:15px;">Payment of ₦45,000 received from Tunde Okafor's parent.</div></div>
+      <div class="type-row"><div class="type-label">Label / Inter 600</div><div class="t-heading" style="font-size:12.5px;text-transform:uppercase;letter-spacing:0.05em;">Student record</div></div>
+      <div class="type-row"><div class="type-label">Figures / Plex Mono 600</div><div class="t-mono" style="font-size:19px;">₦45,000.00</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Components</div>
+    <h2>Core building blocks</h2>
+    <div class="comp-grid">
+
+      <div class="comp-card">
+        <h3>Buttons</h3>
+        <div class="btn-row">
+          <button class="btn btn-primary">Record payment</button>
+          <button class="btn btn-secondary">Edit record</button>
+          <button class="btn btn-ghost">View history</button>
+          <button class="btn btn-danger">Delete draft</button>
+        </div>
+        <div class="caption">Verbs describe the action, not the system. "Record payment," never "Submit."</div>
+      </div>
+
+      <div class="comp-card">
+        <h3>Form field</h3>
+        <div class="field">
+          <label>Guardian's phone number</label>
+          <input type="text" placeholder="0803 123 4567">
+          <div class="hint">Used to send receipts and fee reminders.</div>
+        </div>
+        <div class="caption">One instruction per field. The hint states the plain benefit, not the mechanism.</div>
+      </div>
+
+      <div class="comp-card">
+        <h3>Status stamps</h3>
+        <div class="btn-row">
+          <span class="stamp-badge stamp-paid">Paid</span>
+          <span class="stamp-badge stamp-partial">Partial</span>
+          <span class="stamp-badge stamp-unpaid">Unpaid</span>
+        </div>
+        <div class="caption">Shaped like a stamp, not a gradient pill, borrowing the credibility of a physical receipt stamp.</div>
+      </div>
+
+      <div class="comp-card">
+        <h3>Banners</h3>
+        <div class="banner banner-error">
+          <div class="banner-title">This entry couldn't be saved</div>
+          Your other records are safe. Please try again, or contact support if it happens again.
+        </div>
+        <div class="banner banner-success">
+          <div class="banner-title">Every outstanding balance is cleared for this term</div>
+          Everything is accounted for.
+        </div>
+        <div class="caption">Errors state what's still safe. Celebration stays understated, no exclamation points.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Signature element</div>
+    <h2>The receipt card</h2>
+    <p class="section-intro">Every confirmation in Bursar, a payment, a term summary, an onboarding milestone, renders as a torn-edge receipt. It's the one deliberately physical, tactile motif in an otherwise flat system, a direct callback to the paper booklets the product replaces.</p>
+    <div style="max-width:360px;">
+      <div class="receipt">
+        <div class="receipt-head"><span>Receipt #1082</span><span>28 Jul 2026</span></div>
+        <div class="receipt-line"><span>Tunde Okafor · JSS 2</span><span class="amt">₦45,000.00</span></div>
+        <div class="receipt-line" style="color:var(--ink-soft);"><span>Term 2 tuition</span></div>
+        <div class="receipt-total"><span>Received</span><span class="amt">₦45,000.00</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Data</div>
+    <h2>Tables over pie charts</h2>
+    <p class="section-intro">Where the reference dashboards default to five-slice donuts, Bursar defaults to a sorted list. A proprietor following up on debts needs an order to work through, not a wheel to interpret.</p>
+    <table>
+      <thead><tr><th>Student</th><th>Guardian</th><th>Status</th><th class="amt">Outstanding balance</th></tr></thead>
+      <tbody>
+        <tr><td>Chidinma Eze</td><td>Mrs. Eze</td><td><span class="stamp-badge stamp-unpaid">Unpaid</span></td><td class="amt">₦60,000.00</td></tr>
+        <tr><td>Samuel Adeyemi</td><td>Mr. Adeyemi</td><td><span class="stamp-badge stamp-partial">Partial</span></td><td class="amt">₦18,500.00</td></tr>
+        <tr><td>Tunde Okafor</td><td>Mrs. Okafor</td><td><span class="stamp-badge stamp-paid">Paid</span></td><td class="amt">₦0.00</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="section-label">Applied</div>
+    <h2>Dashboard, in context</h2>
+    <div class="app-demo">
+      <div class="app-sidebar">
+        <div class="brand">Bursar</div>
+        <div class="nav-item active">Dashboard</div>
+        <div class="nav-item">Student records</div>
+        <div class="nav-item">Fees collection</div>
+        <div class="nav-item">Receipts</div>
+        <div class="nav-item">Expenses</div>
+        <div class="nav-item">Staff</div>
+      </div>
+      <div class="app-main">
+        <div class="kpi-row">
+          <div class="kpi"><div class="label">Outstanding balance</div><div class="value" style="color:var(--brick);">₦1,240,000</div></div>
+          <div class="kpi"><div class="label">Collected this term</div><div class="value" style="color:var(--green);">₦8,960,000</div></div>
+          <div class="kpi"><div class="label">Students recorded</div><div class="value">214</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Student</th><th>Status</th><th class="amt">Balance</th></tr></thead>
+          <tbody>
+            <tr><td>Chidinma Eze</td><td><span class="stamp-badge stamp-unpaid">Unpaid</span></td><td class="amt">₦60,000</td></tr>
+            <tr><td>Samuel Adeyemi</td><td><span class="stamp-badge stamp-partial">Partial</span></td><td class="amt">₦18,500</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Guardrails</div>
+    <h2>What this system deliberately avoids</h2>
+    <table class="voice-table">
+      <thead><tr><th style="width:22%">Instinct from the references</th><th>Bursar's version</th></tr></thead>
+      <tbody>
+        <tr><td>Gradient sidebar, bright indigo/purple</td><td class="yes">Solid ink navy, one brass accent line marks the active item</td></tr>
+        <tr><td>Five-colour donut charts for income/expense</td><td class="yes">A sorted table or a two-colour comparison, green against slate</td></tr>
+        <tr><td>Emoji, exclamation points, "You're crushing it"</td><td class="yes">Plain statements: amount, name, what's still safe</td></tr>
+        <tr><td>Soft rounded icon tiles in every card corner</td><td class="yes">Icons only where they aid scanning, never purely decorative</td></tr>
+        <tr><td>Rounded, bubbly corners everywhere (16 to 24px)</td><td class="yes">Modest 8 to 10px radius, closer to a printed card than an app tile</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+</body>
+</html>
