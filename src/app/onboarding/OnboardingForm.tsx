@@ -18,7 +18,7 @@ export function OnboardingForm({ defaultName }: { defaultName: string }) {
   );
 
   return (
-    <form action={action} className="mt-6 space-y-4">
+    <form action={action} className="space-y-4">
       <Field label="Your name">
         <Input name="fullName" defaultValue={defaultName} placeholder="e.g. Mrs. Adunni Bello" required />
       </Field>

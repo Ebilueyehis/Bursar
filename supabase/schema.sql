@@ -286,6 +286,13 @@ grant select, insert, update, delete on table
   to authenticated;
 grant select on table student_balances to authenticated;  -- view is read-only
 
+-- service_role is the trusted, server-only admin role (secret key, never in the
+-- browser). It bypasses RLS but still needs table privileges to write — the
+-- onboarding/provisioning server actions run as service_role.
+grant select, insert, update, delete on all tables in schema public to service_role;
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to service_role;
+
 -- Helper functions grant EXECUTE to PUBLIC by default. Remove that and hand it
 -- back only to authenticated, which the RLS policies require. anon loses it.
 revoke execute on function auth_role() from public;
