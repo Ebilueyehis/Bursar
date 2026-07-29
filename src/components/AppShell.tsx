@@ -33,8 +33,17 @@ function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
+/** Public / auth routes render without the app chrome (sidebar, nav). */
+const BARE_ROUTES = ["/login", "/onboarding", "/register", "/auth"];
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { ready } = useViewer();
+  const pathname = usePathname();
+
+  if (BARE_ROUTES.some((r) => pathname.startsWith(r))) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-dvh bg-background md:flex">
       <Sidebar />
