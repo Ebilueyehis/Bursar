@@ -3,8 +3,7 @@
 ## Naming: a quick suggestion before we start
 
 The app would be called **Bursar**. 
-A bursar is the real, respected person who handles a school's money and records. Your audience already knows and trusts the word. It is short, it works as a verb-adjacent brand ("get Bursar," "ask Bursar"), and it quietly reinforces the personality you already picked: a trusted school administrator. Other options if you want alternatives: **SchoolKeep**, **Ledger & Co**, **EduVault**. But Bursar is the strongest fit for the persona and the pain points in your founder story.
-
+A bursar is the real, respected person who handles a school's money and records. Your audience already knows and trusts the word. It is short, it works as a verb-adjacent brand ("get Bursar," "ask Bursar"), and it quietly reinforces the personality you already picked: a trusted school administrator.
 The rest of this guide uses **Bursar** as a placeholder name. Swap it out easily if you land on something else.
 
 ---
