@@ -48,10 +48,27 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/auth") ||
     path.startsWith("/register"); // parent-facing public registration form
 
+  // Signed out → login (except public routes).
   if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // Signed in but no school/profile yet → always route to onboarding, so a
+  // profile-less user can never land on a blank dashboard (even if the OAuth
+  // callback was bypassed by a redirect-URL misconfiguration).
+  if (user && !isPublic && path !== "/onboarding") {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!profile) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/onboarding";
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
   return response;
