@@ -58,10 +58,10 @@ export default function DebtorsPage() {
         />
       ) : (
         <>
-          <Card className="mb-4 flex items-center justify-between bg-primary text-on-primary">
+          <Card className="mb-4 flex items-center justify-between border-ink bg-ink text-white">
             <div>
-              <p className="text-sm text-on-primary/80">Total outstanding</p>
-              <p className="tabular text-2xl font-bold">
+              <p className="text-sm text-white/70">Total outstanding</p>
+              <p className="money text-2xl font-bold">
                 {new Intl.NumberFormat("en-NG", {
                   style: "currency",
                   currency: "NGN",
@@ -70,8 +70,8 @@ export default function DebtorsPage() {
               </p>
             </div>
             <div className="text-right">
-              <p className="tabular text-2xl font-bold">{filtered.length}</p>
-              <p className="text-sm text-on-primary/80">
+              <p className="money text-2xl font-bold">{filtered.length}</p>
+              <p className="text-sm text-white/70">
                 {filtered.length === 1 ? "student" : "students"}
               </p>
             </div>

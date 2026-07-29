@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useViewer } from "@/lib/viewer";
 import { ROLE_LABELS, TERMS, can } from "@/lib/domain/constants";
-import type { Role, TermName } from "@/lib/domain/types";
+import type { Role } from "@/lib/domain/types";
 import { cn } from "@/components/ui";
 import { useOnline } from "@/lib/useOnline";
 import {
@@ -16,28 +16,108 @@ import {
   StudentsIcon,
 } from "@/components/icons";
 
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof DashboardIcon;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: DashboardIcon },
+  { href: "/debtors", label: "Owing", icon: DebtorsIcon },
+  { href: "/students", label: "Students", icon: StudentsIcon },
+  { href: "/reports", label: "Reports", icon: ReportIcon },
+];
+
+function isActive(pathname: string, href: string): boolean {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { ready } = useViewer();
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col bg-background">
-      <TopBar />
-      <main className="flex-1 px-4 pb-28 pt-4">{ready ? children : null}</main>
-      <BottomNav />
+    <div className="min-h-dvh bg-background md:flex">
+      <Sidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar />
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-10">
+          {ready ? children : null}
+        </main>
+        <BottomNav />
+      </div>
     </div>
   );
 }
 
+// --- Desktop sidebar ---------------------------------------------------------
+
+function Sidebar() {
+  const pathname = usePathname();
+  const { school, role } = useViewer();
+  const showRecord = can(role, "record_payment");
+
+  return (
+    <aside className="hidden w-60 shrink-0 flex-col bg-ink px-3 py-5 text-[#EDEFF2] md:flex">
+      <div className="px-2">
+        <p className="font-display text-lg font-extrabold tracking-tight text-white">
+          Bursar
+        </p>
+        <p className="mt-0.5 truncate text-xs text-[#9aa4b2]">{school?.name}</p>
+      </div>
+
+      <nav className="mt-6 flex flex-col gap-0.5">
+        {NAV_ITEMS.map((item) => {
+          const active = isActive(pathname, item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition",
+                active
+                  ? "border-l-[3px] border-warning bg-white/[0.08] pl-2 font-semibold text-white"
+                  : "text-[#C7CCD4] hover:bg-white/[0.05]",
+              )}
+            >
+              <Icon width={18} height={18} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {showRecord && (
+        <Link
+          href="/pay"
+          className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover"
+        >
+          <PlusIcon width={18} height={18} />
+          Record payment
+        </Link>
+      )}
+
+      <div className="mt-auto space-y-3 pt-6">
+        <TermSelector variant="dark" />
+        <RoleSwitcher role={role} variant="dark" />
+      </div>
+    </aside>
+  );
+}
+
+// --- Mobile top bar ----------------------------------------------------------
+
 function TopBar() {
-  const { school, session, role, setRole, term, setTerm } = useViewer();
+  const { school, role } = useViewer();
   const online = useOnline();
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur md:hidden">
       <div className="flex items-center justify-between px-4 pt-3">
         <div className="flex items-center gap-2.5">
           <Logo />
           <div className="leading-tight">
-            <p className="text-sm font-bold text-ink">Bursar</p>
+            <p className="font-display text-sm font-extrabold text-ink">Bursar</p>
             <p className="max-w-40 truncate text-xs text-ink-muted">
               {school?.name ?? "…"}
             </p>
@@ -45,34 +125,16 @@ function TopBar() {
         </div>
         <div className="flex items-center gap-2">
           {!online && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-tint px-2.5 py-1 text-xs font-semibold text-warning">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-tint px-2.5 py-1 font-mono text-[11px] font-semibold uppercase text-warning">
               <span className="size-1.5 rounded-full bg-warning" />
               Offline
             </span>
           )}
-          <RoleSwitcher role={role} onChange={setRole} />
+          <RoleSwitcher role={role} variant="light" />
         </div>
       </div>
-
-      {/* Term selector — global filter over the current session */}
-      <div className="flex items-center gap-2 px-4 pb-2.5 pt-2">
-        <div className="flex rounded-lg bg-surface-sunken p-0.5">
-          {TERMS.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setTerm(t.value)}
-              className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-semibold transition",
-                term === t.value
-                  ? "bg-surface text-ink shadow-sm"
-                  : "text-ink-muted",
-              )}
-            >
-              {t.label.replace(" term", "")}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-ink-faint">{session?.name}</span>
+      <div className="px-4 pb-2.5 pt-2">
+        <TermSelector variant="light" />
       </div>
     </header>
   );
@@ -80,7 +142,7 @@ function TopBar() {
 
 function Logo() {
   return (
-    <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-on-primary">
+    <span className="flex size-8 items-center justify-center rounded-lg bg-ink text-white">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
           d="M6 4h9a4 4 0 0 1 0 8H6zM6 12h10a4 4 0 0 1 0 8H6zM6 4v16"
@@ -94,29 +156,82 @@ function Logo() {
   );
 }
 
-/** Prototype-only role switcher. In production the role is fixed by sign-in. */
+// --- Shared: term selector ---------------------------------------------------
+
+function TermSelector({ variant }: { variant: "light" | "dark" }) {
+  const { term, setTerm, session } = useViewer();
+  const dark = variant === "dark";
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className={cn(
+          "flex rounded-lg p-0.5",
+          dark ? "bg-white/10" : "bg-surface-sunken",
+        )}
+      >
+        {TERMS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setTerm(t.value)}
+            className={cn(
+              "rounded-md px-2.5 py-1 font-mono text-[11px] font-semibold uppercase transition",
+              term === t.value
+                ? dark
+                  ? "bg-white/15 text-white"
+                  : "bg-surface-raised text-ink shadow-sm"
+                : dark
+                  ? "text-[#9aa4b2]"
+                  : "text-ink-muted",
+            )}
+          >
+            {t.label.replace(" term", "")}
+          </button>
+        ))}
+      </div>
+      <span className={cn("text-xs", dark ? "text-[#9aa4b2]" : "text-ink-faint")}>
+        {session?.name}
+      </span>
+    </div>
+  );
+}
+
+// --- Shared: role switcher (prototype only) ----------------------------------
+
 function RoleSwitcher({
   role,
-  onChange,
+  variant,
 }: {
   role: Role;
-  onChange: (r: Role) => void;
+  variant: "light" | "dark";
 }) {
+  const { setRole } = useViewer();
+  const dark = variant === "dark";
   return (
     <details className="group relative">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3 py-1.5 text-xs font-semibold text-ink [&::-webkit-details-marker]:hidden">
+      <summary
+        className={cn(
+          "flex cursor-pointer list-none items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold [&::-webkit-details-marker]:hidden",
+          dark
+            ? "border-white/20 text-[#EDEFF2]"
+            : "border-border bg-surface-raised text-ink",
+        )}
+      >
         <span className="size-2 rounded-full bg-primary" />
         {ROLE_LABELS[role]}
       </summary>
-      <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-surface p-1 shadow-lg">
+      <div
+        className={cn(
+          "absolute z-30 mt-1 w-52 rounded-lg border border-border bg-surface-raised p-1 shadow-lg",
+          dark ? "bottom-full mb-1 left-0" : "right-0",
+        )}
+      >
         <p className="px-3 py-1.5 text-xs text-ink-faint">View Bursar as…</p>
         {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
           <button
             key={r}
             onClick={(e) => {
-              onChange(r);
-              (e.currentTarget.closest("details") as HTMLDetailsElement).open =
-                false;
+              setRole(r);
+              (e.currentTarget.closest("details") as HTMLDetailsElement).open = false;
             }}
             className={cn(
               "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-surface-sunken",
@@ -132,34 +247,18 @@ function RoleSwitcher({
   );
 }
 
-// --- Bottom navigation -------------------------------------------------------
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: typeof DashboardIcon;
-}
+// --- Mobile bottom navigation ------------------------------------------------
 
 function BottomNav() {
   const pathname = usePathname();
   const { role } = useViewer();
-
-  const items: NavItem[] = [
-    { href: "/", label: "Dashboard", icon: DashboardIcon },
-    { href: "/debtors", label: "Owing", icon: DebtorsIcon },
-    { href: "/students", label: "Students", icon: StudentsIcon },
-    { href: "/reports", label: "Reports", icon: ReportIcon },
-  ];
   const showRecord = can(role, "record_payment");
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-2xl border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-      <div className="relative grid grid-cols-4">
-        {items.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <div className="relative mx-auto grid max-w-3xl grid-cols-4">
+        {NAV_ITEMS.map((item) => {
+          const active = isActive(pathname, item.href);
           const Icon = item.icon;
           return (
             <Link

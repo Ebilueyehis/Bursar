@@ -1,44 +1,49 @@
 @import "tailwindcss";
 
 /*
-  Bursar design system
-  Voice: Respectful, Clear, Confident. Calm, not hype.
-  Money is the hero: high contrast, tabular figures, one meaning per element.
-  Mobile-first: large tap targets, generous spacing, legible type.
+  Bursar design system — "Ledger, not gradient"
+  Voice: Respectful, Clear, Confident. Evidence of order, not enthusiasm.
+  Navy for authority. Green for money accounted for. Brass for attention
+  without alarm. Brick only for what's actually wrong. Money always in a
+  fixed-width column so ₦45,000 and ₦4,500 can never be misread.
 */
 
 :root {
-  /* Neutrals — warm, paper-like, easy on cheap screens in daylight */
-  --background: #f6f7f6;
-  --surface: #ffffff;
-  --surface-sunken: #f0f2f1;
-  --ink: #10201b; /* primary text */
-  --ink-muted: #566661; /* secondary text */
-  --ink-faint: #8a9994; /* tertiary / placeholder */
-  --border: #e2e8e5;
-  --border-strong: #cbd5d0;
+  /* Neutrals — paper and ink */
+  --background: #f2efe6; /* Paper */
+  --surface: #fbfaf5; /* Card */
+  --surface-raised: #ffffff; /* inputs, receipts */
+  --surface-sunken: #eae6da; /* segmented controls, wells */
+  --ink: #1b2a3c; /* Ink Navy — headings, primary text */
+  --ink-muted: #4a5568; /* ink-soft — secondary text */
+  --ink-faint: #54677f; /* Slate — tertiary / placeholder */
+  --border: #dcd6c4; /* Rule */
+  --border-strong: #1b2a3c; /* strong rule (table header underline) */
 
-  /* Brand — deep teal: money, trust, calm (distinct from hype-green) */
-  --primary: #0d5c4a;
-  --primary-hover: #0a4a3c;
-  --primary-tint: #e7f2ee;
+  /* Brand — Ledger Green */
+  --primary: #2f6f4e;
+  --primary-hover: #275c41;
+  --primary-tint: #e1ebe3; /* green-soft */
   --on-primary: #ffffff;
 
   /* Semantic — money states, one meaning each */
-  --success: #157347; /* paid / positive */
-  --success-tint: #e6f4ec;
-  --warning: #b45309; /* partial / owing */
-  --warning-tint: #fdf1e3;
-  --danger: #b42318; /* overdue / error */
-  --danger-tint: #fdecea;
+  --success: #2f6f4e; /* paid / income */
+  --success-tint: #e1ebe3;
+  --warning: #a9793a; /* Brass — partial / pending */
+  --warning-tint: #f2e8d4;
+  --danger: #9c4234; /* Brick — unpaid / error */
+  --danger-tint: #f1e1dc;
+  --slate: #54677f;
+  --slate-tint: #e6e9ed;
 
-  --ring: #0d5c4a;
-  --radius: 0.75rem;
+  --ring: #2f6f4e;
+  --radius: 10px;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-surface-sunken: var(--surface-sunken);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
@@ -57,9 +62,12 @@
   --color-warning-tint: var(--warning-tint);
   --color-danger: var(--danger);
   --color-danger-tint: var(--danger-tint);
+  --color-slate: var(--slate);
+  --color-slate-tint: var(--slate-tint);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-manrope);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-plex-mono);
 
   --radius-lg: var(--radius);
 }
@@ -69,31 +77,36 @@
 }
 
 html {
-  /* Prevent iOS text auto-zoom while keeping inputs >=16px */
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--ink);
-  font-family: var(--font-geist-sans), system-ui, Arial, sans-serif;
-  /* Safe-area padding for installed PWA on notched phones */
+  font-family: var(--font-inter), system-ui, Arial, sans-serif;
+  line-height: 1.5;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Money and any figure that must align in a column */
-.tabular {
+/* Display face for titles and figures that need weight */
+h1, h2, h3, .font-display {
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Money and dates — fixed-width so columns line up and can't be misread */
+.tabular,
+.money {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
 
-/* Accessible focus ring for keyboard + switch users */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
-/* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -101,4 +114,33 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Torn-edge receipt — the one tactile motif, a callback to paper booklets */
+.receipt {
+  position: relative;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.receipt::before,
+.receipt::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 12px;
+  background: radial-gradient(
+      circle 6px at 0 0,
+      transparent 6px,
+      var(--background) 6.5px
+    )
+    top left / 12px 12px repeat-y;
+}
+.receipt::before {
+  left: -1px;
+}
+.receipt::after {
+  right: -1px;
+  transform: scaleX(-1);
 }

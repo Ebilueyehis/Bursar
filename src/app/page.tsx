@@ -36,17 +36,17 @@ export default function DashboardPage() {
         <div className="space-y-4">
           {/* The priority: who owes, and how much. */}
           <Link href="/debtors" className="block">
-            <div className="rounded-lg border border-border bg-primary p-5 text-on-primary shadow-sm">
+            <div className="rounded-lg border border-ink bg-ink p-5 text-white">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-on-primary/80">
+                <p className="text-sm font-medium text-white/70">
                   Outstanding this {termLabel(term).toLowerCase()}
                 </p>
                 <ChevronRightIcon width={20} height={20} className="opacity-80" />
               </div>
-              <p className="tabular mt-1 text-4xl font-bold">
+              <p className="money mt-1 text-4xl font-bold">
                 {formatBig(stats.totalOutstanding)}
               </p>
-              <p className="mt-1 text-sm text-on-primary/80">
+              <p className="mt-1 text-sm text-white/70">
                 {stats.debtorCount === 0
                   ? "Every balance is cleared. Everything is accounted for."
                   : `${stats.debtorCount} ${
