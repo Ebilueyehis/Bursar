@@ -83,7 +83,8 @@ export default function NewStudentPage() {
       </p>
       <h1 className="mb-1 font-display text-2xl font-extrabold text-ink">Add a student</h1>
       <p className="mb-5 text-sm text-ink-muted">
-        Recorded by {actorName}. Their term fee creates this term&apos;s bill.
+        Recorded by {actorName}. If this class has a fee structure, it&apos;s
+        applied automatically — set it under Fees.
       </p>
 
       <div className="space-y-4">
@@ -107,7 +108,7 @@ export default function NewStudentPage() {
           </Select>
         </Field>
 
-        <Field label="Term fee (₦)" hint="What this student owes for the term. Leave blank to set later.">
+        <Field label="Term fee (₦)" hint="Only used if this class has no fee structure. Leave blank to bill from the class fees.">
           <Input value={form.termFee} onChange={set("termFee")} inputMode="decimal" placeholder="e.g. 45,000" />
         </Field>
 

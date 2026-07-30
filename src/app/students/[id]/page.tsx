@@ -10,14 +10,18 @@ import { can, termLabel } from "@/lib/domain/constants";
 import { messaging } from "@/lib/messaging/mock";
 import { templates, type Channel } from "@/lib/messaging/provider";
 import {
+  Banner,
   Button,
   Card,
   EmptyState,
+  Field,
+  Input,
   LoadingBlock,
   Money,
   StatusPill,
   cn,
 } from "@/components/ui";
+import { parseNairaToKobo } from "@/lib/money";
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -26,12 +30,12 @@ import {
   SendIcon,
 } from "@/components/icons";
 import { Avatar } from "@/app/debtors/page";
-import type { PaymentMethod } from "@/lib/domain/types";
+import type { PaymentMethod, TermName } from "@/lib/domain/types";
 
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
   const { term, role, school } = useViewer();
-  const { data: account, loading } = useAsync(
+  const { data: account, loading, reload } = useAsync(
     () => repository.getStudentAccount(params.id, term),
     [params.id, term],
   );
@@ -147,7 +151,14 @@ export default function StudentDetailPage() {
           ))}
           {account.bill.discount > 0 && (
             <li className="flex items-center justify-between border-b border-border py-2 text-sm">
-              <span className="text-ink-muted">Discount</span>
+              <span className="text-ink-muted">
+                Discount
+                {account.bill.discountReason && (
+                  <span className="ml-1.5 text-xs text-ink-faint">
+                    ({account.bill.discountReason})
+                  </span>
+                )}
+              </span>
               <Money kobo={-account.bill.discount} tone="success" className="font-medium" />
             </li>
           )}
@@ -156,6 +167,16 @@ export default function StudentDetailPage() {
             <Money kobo={account.billTotal} tone="ink" className="text-base" />
           </li>
         </ul>
+
+        {can(role, "edit_fees") && account.bill.id && (
+          <DiscountEditor
+            studentId={student.id}
+            term={term}
+            currentKobo={account.bill.discount}
+            currentReason={account.bill.discountReason}
+            onSaved={reload}
+          />
+        )}
       </Card>
 
       {/* Receipts */}
@@ -248,6 +269,89 @@ function ReminderCard({ phone, message }: { phone: string; message: string }) {
         {sending ? "Sending…" : `Send to ${phone}`}
       </Button>
     </Card>
+  );
+}
+
+function DiscountEditor({
+  studentId,
+  term,
+  currentKobo,
+  currentReason,
+  onSaved,
+}: {
+  studentId: string;
+  term: TermName;
+  currentKobo: number;
+  currentReason?: string;
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [amountText, setAmountText] = useState(
+    currentKobo > 0 ? String(currentKobo / 100) : "",
+  );
+  const [reason, setReason] = useState(currentReason ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-3 border-t border-border pt-3 text-sm font-semibold text-primary"
+      >
+        {currentKobo > 0 ? "Edit discount / scholarship" : "Add discount / scholarship"}
+      </button>
+    );
+  }
+
+  async function save() {
+    setError(null);
+    const kobo = amountText.trim() ? parseNairaToKobo(amountText) : 0;
+    if (kobo === null) {
+      setError("Enter a valid amount, or leave blank to remove.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await repository.setStudentDiscount(studentId, term, kobo ?? 0, reason.trim() || undefined);
+      setOpen(false);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the discount.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-border pt-3">
+      {error && <Banner tone="error">{error}</Banner>}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Discount amount">
+          <Input
+            inputMode="decimal"
+            value={amountText}
+            onChange={(e) => setAmountText(e.target.value)}
+            placeholder="e.g. 10,000"
+          />
+        </Field>
+        <Field label="Reason">
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Scholarship"
+          />
+        </Field>
+      </div>
+      <div className="flex gap-3">
+        <Button onClick={save} disabled={saving} className="flex-1">
+          {saving ? "Saving…" : "Save discount"}
+        </Button>
+        <Button variant="secondary" onClick={() => setOpen(false)} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -14,6 +14,7 @@ import {
   DashboardIcon,
   DebtorsIcon,
   ExpenseIcon,
+  FeesIcon,
   LedgerIcon,
   PlusIcon,
   ReportIcon,
@@ -39,6 +40,7 @@ const PRIMARY_NAV: NavItem[] = [
 
 /** Money-out & admin — desktop sidebar; reached from Ledger on mobile. */
 const SECONDARY_NAV: NavItem[] = [
+  { href: "/fees", label: "Fees", icon: FeesIcon, permission: "edit_fees" },
   { href: "/expenses", label: "Expenses", icon: ExpenseIcon, permission: "manage_expenses" },
   { href: "/staff", label: "Staff", icon: StaffIcon, permission: "manage_staff" },
   { href: "/reports", label: "Reports", icon: ReportIcon, permission: "view_reports" },

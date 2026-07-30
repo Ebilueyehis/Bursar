@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type {
   Bill,
   Expense,
+  FeeItem,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -20,6 +21,7 @@ import type {
   CreateStudentInput,
   DashboardStats,
   DateFilter,
+  FeeLineInput,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
@@ -140,6 +142,19 @@ function mapExpense(r: Row): Expense {
   };
 }
 
+function mapFeeItem(r: Row): FeeItem {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    sessionId: r.session_id as string,
+    term: r.term as TermName,
+    level: r.level as string,
+    name: r.name as string,
+    amount: Number(r.amount_kobo),
+    optional: (r.optional as boolean) ?? false,
+  };
+}
+
 // --- context (school + current session) -------------------------------------
 
 async function getContext(): Promise<{ school: School | null; session: Session | null }> {
@@ -182,6 +197,7 @@ function buildAccount(studentRow: Row, billRow: Row | undefined, term: TermName,
     term,
     lines,
     discount,
+    discountReason: (billRow?.discount_reason as string) ?? undefined,
     createdOn: (billRow?.created_on as string) ?? student.enrolledOn,
   };
 
@@ -408,8 +424,33 @@ export const supabaseRepository: Repository = {
       .single();
     if (sErr || !student) throw new Error("Couldn't save the student record.");
 
-    // Create this term's bill from the provided term fee (a single line).
-    if (input.termFeeKobo > 0) {
+    // Bill this term. Prefer the class level's fee structure; fall back to the
+    // manually typed term fee when no structure is set for that level yet.
+    const { data: cls } = await client
+      .from("classes")
+      .select("level")
+      .eq("id", input.classId)
+      .maybeSingle();
+    const level = (cls?.level as string) ?? "";
+
+    const { data: feeItems } = await client
+      .from("fee_items")
+      .select("name, amount_kobo")
+      .eq("session_id", session.id)
+      .eq("term", school.currentTerm)
+      .eq("level", level);
+
+    let lines: { name: string; amount_kobo: number }[] = [];
+    if (feeItems && feeItems.length > 0) {
+      lines = feeItems.map((f) => ({
+        name: f.name as string,
+        amount_kobo: Number(f.amount_kobo),
+      }));
+    } else if (input.termFeeKobo > 0) {
+      lines = [{ name: "Term fee", amount_kobo: input.termFeeKobo }];
+    }
+
+    if (lines.length > 0) {
       const { data: bill } = await client
         .from("bills")
         .insert({
@@ -421,11 +462,9 @@ export const supabaseRepository: Repository = {
         .select("id")
         .single();
       if (bill) {
-        await client.from("bill_lines").insert({
-          bill_id: bill.id,
-          name: "Term fee",
-          amount_kobo: input.termFeeKobo,
-        });
+        await client
+          .from("bill_lines")
+          .insert(lines.map((l) => ({ bill_id: bill.id, ...l })));
       }
     }
 
@@ -723,5 +762,138 @@ export const supabaseRepository: Repository = {
       });
     }
     return groupLedger(entries);
+  },
+
+  // --- Fee structure & discounts --------------------------------------------
+
+  async listFeeItems(term: TermName): Promise<FeeItem[]> {
+    const client = sb();
+    const { session } = await getContext();
+    if (!session) return [];
+    const { data } = await client
+      .from("fee_items")
+      .select("*")
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .order("level");
+    return (data ?? []).map(mapFeeItem);
+  },
+
+  async saveFeeStructure(
+    level: string,
+    term: TermName,
+    items: FeeLineInput[],
+  ): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("School not set up.");
+
+    // Replace the level+term structure atomically enough for our needs: delete
+    // then insert. A student's existing bill lines are snapshots and untouched.
+    const { error: delErr } = await client
+      .from("fee_items")
+      .delete()
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .eq("level", level);
+    if (delErr) throw new Error("Couldn't update the fee structure.");
+
+    const rows = items
+      .filter((i) => i.name.trim() && i.amountKobo >= 0)
+      .map((i) => ({
+        school_id: school.id,
+        session_id: session.id,
+        term,
+        level,
+        name: i.name.trim(),
+        amount_kobo: i.amountKobo,
+        optional: i.optional ?? false,
+      }));
+    if (rows.length > 0) {
+      const { error } = await client.from("fee_items").insert(rows);
+      if (error) throw new Error("Couldn't save the fee structure.");
+    }
+  },
+
+  async generateBill(studentId: string, term: TermName): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("School not set up.");
+
+    const { data: existing } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .maybeSingle();
+    if (existing) return; // never overwrite a student's history
+
+    const { data: student } = await client
+      .from("students")
+      .select("class_id")
+      .eq("id", studentId)
+      .maybeSingle();
+    const { data: cls } = await client
+      .from("classes")
+      .select("level")
+      .eq("id", (student?.class_id as string) ?? "")
+      .maybeSingle();
+    const level = (cls?.level as string) ?? "";
+
+    const { data: feeItems } = await client
+      .from("fee_items")
+      .select("name, amount_kobo")
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .eq("level", level);
+    if (!feeItems || feeItems.length === 0) return; // nothing to bill yet
+
+    const { data: bill } = await client
+      .from("bills")
+      .insert({
+        school_id: school.id,
+        student_id: studentId,
+        session_id: session.id,
+        term,
+      })
+      .select("id")
+      .single();
+    if (bill) {
+      await client.from("bill_lines").insert(
+        feeItems.map((f) => ({
+          bill_id: bill.id,
+          name: f.name as string,
+          amount_kobo: Number(f.amount_kobo),
+        })),
+      );
+    }
+  },
+
+  async setStudentDiscount(
+    studentId: string,
+    term: TermName,
+    discountKobo: number,
+    reason?: string,
+  ): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("School not set up.");
+    if (discountKobo < 0) throw new Error("A discount can't be negative.");
+
+    const { data: bill } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .maybeSingle();
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+
+    const { error } = await client
+      .from("bills")
+      .update({ discount_kobo: discountKobo, discount_reason: reason ?? null })
+      .eq("id", bill.id);
+    if (error) throw new Error("Couldn't save the discount.");
   },
 };

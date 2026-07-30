@@ -113,6 +113,7 @@ export interface Bill {
   term: TermName;
   lines: BillLine[];
   discount: Kobo;
+  discountReason?: string;
   createdOn: string; // ISO date — drives "oldest first" debtor ordering
 }
 

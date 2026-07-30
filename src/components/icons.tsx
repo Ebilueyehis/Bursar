@@ -130,6 +130,14 @@ export const ExpenseIcon = (p: IconProps) => (
   </svg>
 );
 
+export const FeesIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M4 7a2 2 0 0 1 2-2h9l5 5v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" />
+    <circle cx="11" cy="12" r="2.5" />
+    <path d="M8.5 12h.01" />
+  </svg>
+);
+
 export const StaffIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <circle cx="9" cy="8" r="3" />

@@ -116,6 +116,7 @@ create table bills (
   session_id    uuid not null references sessions(id) on delete cascade,
   term          term_name not null,
   discount_kobo bigint not null default 0 check (discount_kobo >= 0),
+  discount_reason text,                          -- e.g. 'Scholarship', 'Sibling'
   created_on    date not null default current_date,
   unique (student_id, session_id, term)
 );

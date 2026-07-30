@@ -1,6 +1,7 @@
 import type {
   Bill,
   Expense,
+  FeeItem,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -30,6 +31,7 @@ import type {
   CreateStaffInput,
   DashboardStats,
   DateFilter,
+  FeeLineInput,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
@@ -50,6 +52,8 @@ let receiptSeq = NEXT_RECEIPT_SEQ;
 // Money-out stores. Seeded empty; writes mutate them within a session.
 const STAFF: Staff[] = [];
 const EXPENSES: Expense[] = [];
+// Fee structure store (level + term → line items). Seeded empty.
+const FEE_ITEMS: FeeItem[] = [];
 
 function inRange(date: string, filter?: DateFilter): boolean {
   if (filter?.from && date < filter.from) return false;
@@ -234,14 +238,25 @@ export const mockRepository: Repository = {
       enrolledOn: new Date().toISOString().slice(0, 10),
     };
     STUDENTS.push(student);
-    if (input.termFeeKobo > 0) {
+
+    // Prefer the class level's fee structure; fall back to the typed term fee.
+    const structure = FEE_ITEMS.filter(
+      (f) => f.level === cls.level && f.term === SCHOOL.currentTerm,
+    );
+    let lines: { name: string; amount: number }[] = [];
+    if (structure.length > 0) {
+      lines = structure.map((f) => ({ name: f.name, amount: f.amount }));
+    } else if (input.termFeeKobo > 0) {
+      lines = [{ name: "Term fee", amount: input.termFeeKobo }];
+    }
+    if (lines.length > 0) {
       BILLS.push({
         id: `b-new-${Date.now()}`,
         schoolId: SCHOOL.id,
         studentId: sId,
         sessionId: SESSION.id,
         term: SCHOOL.currentTerm,
-        lines: [{ name: "Term fee", amount: input.termFeeKobo }],
+        lines,
         discount: 0,
         createdOn: new Date().toISOString().slice(0, 10),
       });
@@ -484,5 +499,74 @@ export const mockRepository: Repository = {
       });
     }
     return groupLedger(entries);
+  },
+
+  // --- Fee structure & discounts --------------------------------------------
+
+  async listFeeItems(term: TermName): Promise<FeeItem[]> {
+    await tick();
+    return FEE_ITEMS.filter((f) => f.term === term);
+  },
+
+  async saveFeeStructure(
+    level: string,
+    term: TermName,
+    items: FeeLineInput[],
+  ): Promise<void> {
+    await tick();
+    // Replace this level+term structure.
+    for (let i = FEE_ITEMS.length - 1; i >= 0; i--) {
+      if (FEE_ITEMS[i].level === level && FEE_ITEMS[i].term === term)
+        FEE_ITEMS.splice(i, 1);
+    }
+    items
+      .filter((it) => it.name.trim() && it.amountKobo >= 0)
+      .forEach((it, idx) => {
+        FEE_ITEMS.push({
+          id: `fee-${level}-${term}-${idx}-${Date.now()}`,
+          schoolId: SCHOOL.id,
+          sessionId: SESSION.id,
+          term,
+          level,
+          name: it.name.trim(),
+          amount: it.amountKobo,
+          optional: it.optional ?? false,
+        });
+      });
+  },
+
+  async generateBill(studentId: string, term: TermName): Promise<void> {
+    await tick();
+    if (BILLS.some((b) => b.studentId === studentId && b.term === term)) return;
+    const student = STUDENTS.find((s) => s.id === studentId);
+    if (!student) return;
+    const cls = classById(student.classId);
+    const structure = FEE_ITEMS.filter(
+      (f) => f.level === cls?.level && f.term === term,
+    );
+    if (structure.length === 0) return;
+    BILLS.push({
+      id: `b-gen-${studentId}-${term}`,
+      schoolId: SCHOOL.id,
+      studentId,
+      sessionId: SESSION.id,
+      term,
+      lines: structure.map((f) => ({ name: f.name, amount: f.amount })),
+      discount: 0,
+      createdOn: new Date().toISOString().slice(0, 10),
+    });
+  },
+
+  async setStudentDiscount(
+    studentId: string,
+    term: TermName,
+    discountKobo: number,
+    reason?: string,
+  ): Promise<void> {
+    await tick();
+    const bill = BILLS.find((b) => b.studentId === studentId && b.term === term);
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+    bill.discount = Math.max(0, discountKobo);
+    bill.discountReason = reason;
   },
 };

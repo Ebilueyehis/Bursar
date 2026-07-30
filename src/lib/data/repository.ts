@@ -1,6 +1,7 @@
 import type {
   Expense,
   ExpenseCadence,
+  FeeItem,
   LedgerDay,
   Payment,
   PaymentMethod,
@@ -76,6 +77,32 @@ export interface Repository {
 
   /** Unified daily cashbook: payments (in) + expenses (out) grouped by day. */
   getLedger(filter?: DateFilter): Promise<LedgerDay[]>;
+
+  // --- Fee structure & discounts --------------------------------------------
+
+  /** Fee line items for the current session + term, across all class levels. */
+  listFeeItems(term: TermName): Promise<FeeItem[]>;
+  /** Replace the fee structure for one class level + term. */
+  saveFeeStructure(
+    level: string,
+    term: TermName,
+    items: FeeLineInput[],
+  ): Promise<void>;
+  /** Create a bill for a student from their class level's structure, if missing. */
+  generateBill(studentId: string, term: TermName): Promise<void>;
+  /** Set a student's discount/scholarship on their bill for the term. */
+  setStudentDiscount(
+    studentId: string,
+    term: TermName,
+    discountKobo: number,
+    reason?: string,
+  ): Promise<void>;
+}
+
+export interface FeeLineInput {
+  name: string;
+  amountKobo: number;
+  optional?: boolean;
 }
 
 export interface DateFilter {
