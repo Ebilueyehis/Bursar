@@ -1,14 +1,19 @@
 import type {
   Bill,
+  Expense,
+  LedgerDay,
+  LedgerEntry,
   Payment,
   School,
   SchoolClass,
   Session,
+  Staff,
   Student,
   StudentAccount,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
+import { groupLedger } from "@/lib/data/ledger";
 import {
   BILLS,
   CLASSES,
@@ -21,10 +26,15 @@ import {
   USERS,
 } from "@/lib/data/seed";
 import type {
+  CreateExpenseInput,
+  CreateStaffInput,
   DashboardStats,
+  DateFilter,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
+  PayrollPreview,
+  PayrollResult,
   RecordPaymentInput,
   Repository,
 } from "@/lib/data/repository";
@@ -36,6 +46,21 @@ import type {
  */
 
 let receiptSeq = NEXT_RECEIPT_SEQ;
+
+// Money-out stores. Seeded empty; writes mutate them within a session.
+const STAFF: Staff[] = [];
+const EXPENSES: Expense[] = [];
+
+function inRange(date: string, filter?: DateFilter): boolean {
+  if (filter?.from && date < filter.from) return false;
+  if (filter?.to && date > filter.to) return false;
+  return true;
+}
+
+function studentName(studentId: string): string {
+  const s = STUDENTS.find((x) => x.id === studentId);
+  return s ? `${s.firstName} ${s.lastName}` : "Student";
+}
 
 function classById(id: string): SchoolClass | undefined {
   return CLASSES.find((c) => c.id === id);
@@ -275,5 +300,189 @@ export const mockRepository: Repository = {
       results.push({ rowNumber, ok: true, studentName: name });
     });
     return { imported, failed: rows.length - imported, results };
+  },
+
+  // --- Money out ------------------------------------------------------------
+
+  async listExpenses(filter?: DateFilter): Promise<Expense[]> {
+    await tick();
+    return EXPENSES.filter((e) => inRange(e.spentOn, filter)).sort((a, b) =>
+      b.spentOn.localeCompare(a.spentOn),
+    );
+  },
+
+  async createExpense(input: CreateExpenseInput): Promise<Expense> {
+    await tick();
+    if (input.amountKobo <= 0)
+      throw new Error("Enter an amount greater than zero.");
+    const expense: Expense = {
+      id: `e-new-${Date.now()}`,
+      schoolId: SCHOOL.id,
+      payee: input.payee,
+      description: input.description,
+      category: input.category,
+      cadence: input.cadence,
+      amount: input.amountKobo,
+      spentOn: input.spentOn,
+      method: input.method,
+      recordedByName: input.recordedByName,
+      note: input.note,
+    };
+    EXPENSES.push(expense);
+    return expense;
+  },
+
+  async updateExpense(id: string, patch: CreateExpenseInput): Promise<Expense> {
+    await tick();
+    const existing = EXPENSES.find((e) => e.id === id);
+    if (!existing) throw new Error("Expense not found.");
+    Object.assign(existing, {
+      payee: patch.payee,
+      description: patch.description,
+      category: patch.category,
+      cadence: patch.cadence,
+      amount: patch.amountKobo,
+      spentOn: patch.spentOn,
+      method: patch.method,
+      note: patch.note,
+    });
+    return existing;
+  },
+
+  async deleteExpense(id: string): Promise<void> {
+    await tick();
+    const i = EXPENSES.findIndex((e) => e.id === id);
+    if (i >= 0) EXPENSES.splice(i, 1);
+  },
+
+  async listStaff(): Promise<Staff[]> {
+    await tick();
+    return [...STAFF].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  },
+
+  async createStaff(input: CreateStaffInput): Promise<Staff> {
+    await tick();
+    const staff: Staff = {
+      id: `st-new-${Date.now()}`,
+      schoolId: SCHOOL.id,
+      fullName: input.fullName,
+      title: input.title,
+      employmentType: input.employmentType,
+      assignment: input.assignment,
+      monthlySalary: input.monthlySalaryKobo,
+      phone: input.phone,
+      active: true,
+    };
+    STAFF.push(staff);
+    return staff;
+  },
+
+  async updateStaff(id: string, patch: CreateStaffInput): Promise<Staff> {
+    await tick();
+    const existing = STAFF.find((s) => s.id === id);
+    if (!existing) throw new Error("Staff not found.");
+    Object.assign(existing, {
+      fullName: patch.fullName,
+      title: patch.title,
+      employmentType: patch.employmentType,
+      assignment: patch.assignment,
+      monthlySalary: patch.monthlySalaryKobo,
+      phone: patch.phone,
+    });
+    return existing;
+  },
+
+  async setStaffActive(id: string, active: boolean): Promise<void> {
+    await tick();
+    const s = STAFF.find((x) => x.id === id);
+    if (s) s.active = active;
+  },
+
+  async previewPayroll(period: string): Promise<PayrollPreview> {
+    await tick();
+    const rows = STAFF.filter((s) => s.active).map((staff) => {
+      const alreadyPaid = EXPENSES.some(
+        (e) => e.staffId === staff.id && e.salaryPeriod === period,
+      );
+      return { staff, alreadyPaid };
+    });
+    const totalToPayKobo = rows
+      .filter((r) => !r.alreadyPaid)
+      .reduce((sum, r) => sum + r.staff.monthlySalary, 0);
+    return { period, rows, totalToPayKobo };
+  },
+
+  async runPayroll(
+    period: string,
+    recordedByName: string,
+  ): Promise<PayrollResult> {
+    await tick();
+    let created = 0;
+    let skipped = 0;
+    let totalPaidKobo = 0;
+    for (const staff of STAFF.filter((s) => s.active)) {
+      const already = EXPENSES.some(
+        (e) => e.staffId === staff.id && e.salaryPeriod === period,
+      );
+      if (already) {
+        skipped += 1;
+        continue;
+      }
+      if (staff.monthlySalary <= 0) {
+        skipped += 1;
+        continue;
+      }
+      EXPENSES.push({
+        id: `e-sal-${staff.id}-${period}`,
+        schoolId: SCHOOL.id,
+        payee: staff.fullName,
+        description: `Salary — ${period}`,
+        category: "Salary",
+        cadence: "monthly",
+        amount: staff.monthlySalary,
+        spentOn: `${period}-28`,
+        method: "transfer",
+        staffId: staff.id,
+        salaryPeriod: period,
+        recordedByName,
+      });
+      created += 1;
+      totalPaidKobo += staff.monthlySalary;
+    }
+    return { created, skipped, totalPaidKobo };
+  },
+
+  async getLedger(filter?: DateFilter): Promise<LedgerDay[]> {
+    await tick();
+    const entries: LedgerEntry[] = [];
+    for (const p of PAYMENTS) {
+      if (!inRange(p.paidOn, filter)) continue;
+      entries.push({
+        id: p.id,
+        date: p.paidOn,
+        kind: "payment",
+        direction: "in",
+        title: studentName(p.studentId),
+        subtitle: `${p.receiptNo} · ${p.method}`,
+        amount: p.amount,
+        method: p.method,
+        reference: p.studentId,
+      });
+    }
+    for (const e of EXPENSES) {
+      if (!inRange(e.spentOn, filter)) continue;
+      entries.push({
+        id: e.id,
+        date: e.spentOn,
+        kind: "expense",
+        direction: "out",
+        title: e.payee,
+        subtitle: `${e.category} · ${e.method}`,
+        amount: e.amount,
+        method: e.method,
+        reference: e.id,
+      });
+    }
+    return groupLedger(entries);
   },
 };

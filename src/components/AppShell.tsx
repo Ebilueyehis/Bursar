@@ -4,15 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useViewer } from "@/lib/viewer";
+import type { Permission } from "@/lib/domain/constants";
 import { ROLE_LABELS, TERMS, can } from "@/lib/domain/constants";
+import type { Role } from "@/lib/domain/types";
 import { cn } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { useOnline } from "@/lib/useOnline";
 import {
   DashboardIcon,
   DebtorsIcon,
+  ExpenseIcon,
+  LedgerIcon,
   PlusIcon,
   ReportIcon,
+  StaffIcon,
   StudentsIcon,
 } from "@/components/icons";
 
@@ -20,14 +25,28 @@ interface NavItem {
   href: string;
   label: string;
   icon: typeof DashboardIcon;
+  /** When set, the item only shows for roles that hold this permission. */
+  permission?: Permission;
 }
 
-const NAV_ITEMS: NavItem[] = [
+/** The everyday tabs — also the mobile bottom bar. */
+const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
   { href: "/debtors", label: "Owing", icon: DebtorsIcon },
   { href: "/students", label: "Students", icon: StudentsIcon },
-  { href: "/reports", label: "Reports", icon: ReportIcon },
+  { href: "/ledger", label: "Ledger", icon: LedgerIcon, permission: "view_ledger" },
 ];
+
+/** Money-out & admin — desktop sidebar; reached from Ledger on mobile. */
+const SECONDARY_NAV: NavItem[] = [
+  { href: "/expenses", label: "Expenses", icon: ExpenseIcon, permission: "manage_expenses" },
+  { href: "/staff", label: "Staff", icon: StaffIcon, permission: "manage_staff" },
+  { href: "/reports", label: "Reports", icon: ReportIcon, permission: "view_reports" },
+];
+
+function visibleNav(items: NavItem[], role: Role): NavItem[] {
+  return items.filter((i) => !i.permission || can(role, i.permission));
+}
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -75,25 +94,20 @@ function Sidebar() {
       </div>
 
       <nav className="mt-6 flex flex-col gap-0.5">
-        {NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition",
-                active
-                  ? "border-l-[3px] border-warning bg-white/[0.08] pl-2 font-semibold text-white"
-                  : "text-[#C7CCD4] hover:bg-white/[0.05]",
-              )}
-            >
-              <Icon width={18} height={18} />
-              {item.label}
-            </Link>
-          );
-        })}
+        {visibleNav(PRIMARY_NAV, role).map((item) => (
+          <SidebarLink key={item.href} item={item} pathname={pathname} />
+        ))}
+
+        {visibleNav(SECONDARY_NAV, role).length > 0 && (
+          <>
+            <p className="mt-5 mb-1 px-3 font-mono text-[10px] uppercase tracking-wider text-[#6b7686]">
+              Money out & admin
+            </p>
+            {visibleNav(SECONDARY_NAV, role).map((item) => (
+              <SidebarLink key={item.href} item={item} pathname={pathname} />
+            ))}
+          </>
+        )}
       </nav>
 
       {showRecord && (
@@ -111,6 +125,25 @@ function Sidebar() {
         <UserChip variant="dark" />
       </div>
     </aside>
+  );
+}
+
+function SidebarLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = isActive(pathname, item.href);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition",
+        active
+          ? "border-l-[3px] border-warning bg-white/[0.08] pl-2 font-semibold text-white"
+          : "text-[#C7CCD4] hover:bg-white/[0.05]",
+      )}
+    >
+      <Icon width={18} height={18} />
+      {item.label}
+    </Link>
   );
 }
 
@@ -270,11 +303,15 @@ function BottomNav() {
   const pathname = usePathname();
   const { role } = useViewer();
   const showRecord = can(role, "record_payment");
+  const items = visibleNav(PRIMARY_NAV, role);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-      <div className="relative mx-auto grid max-w-3xl grid-cols-4">
-        {NAV_ITEMS.map((item) => {
+      <div
+        className="relative mx-auto grid max-w-3xl"
+        style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+      >
+        {items.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
           return (
