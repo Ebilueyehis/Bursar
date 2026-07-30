@@ -18,6 +18,7 @@ import {
   Input,
   LoadingBlock,
   Money,
+  NairaInput,
   PageHeader,
 } from "@/components/ui";
 import { PlusIcon } from "@/components/icons";
@@ -234,10 +235,9 @@ function LevelEditor({
           </div>
           <div className="w-32">
             <Field label={i === 0 ? "Amount" : ""}>
-              <Input
-                inputMode="decimal"
+              <NairaInput
                 value={row.amountText}
-                onChange={(e) => setRow(i, { amountText: e.target.value })}
+                onValueChange={(v) => setRow(i, { amountText: v })}
                 placeholder="45,000"
               />
             </Field>

@@ -144,3 +144,12 @@ h1, h2, h3, .font-display {
   right: -1px;
   transform: scaleX(-1);
 }
+
+/* Print receipt — hide app chrome, show only the printable area */
+@media print {
+  body { background: white !important; }
+  nav, aside, header, .no-print, button:not(.print-include) { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .print-only { display: block !important; }
+  .receipt::before, .receipt::after { display: none; }
+}

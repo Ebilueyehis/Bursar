@@ -24,6 +24,7 @@ import {
   Input,
   LoadingBlock,
   Money,
+  NairaInput,
   PageHeader,
   Select,
   StatusPill,
@@ -239,7 +240,7 @@ function ExpenseForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount">
-          <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} placeholder="e.g. 25,000" />
+          <NairaInput value={amountText} onValueChange={setAmountText} placeholder="e.g. 25,000" />
         </Field>
         <Field label="Date of spend">
           <Input type="date" value={spentOn} max={today} onChange={(e) => setSpentOn(e.target.value)} />

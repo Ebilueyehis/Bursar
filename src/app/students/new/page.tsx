@@ -2,18 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { repository } from "@/lib/data/repository";
+import { formatNaira } from "@/lib/money";
 import { parseNairaToKobo } from "@/lib/money";
-import { Button, Field, Input, Select, LoadingBlock } from "@/components/ui";
+import { Button, Field, Input, Money, NairaInput, Select, LoadingBlock } from "@/components/ui";
 import { ArrowLeftIcon } from "@/components/icons";
 
 export default function NewStudentPage() {
   const router = useRouter();
   const { data: classes } = useAsync(() => repository.listClasses(), []);
-  const { actorName } = useViewer();
+  const { actorName, term } = useViewer();
+  const { data: feeItems } = useAsync(() => repository.listFeeItems(term), [term]);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -30,6 +32,23 @@ export default function NewStudentPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const selectedClass = useMemo(
+    () => classes?.find((c) => c.id === form.classId),
+    [classes, form.classId],
+  );
+  const levelFeeTotal = useMemo(() => {
+    if (!selectedClass || !feeItems) return 0;
+    return feeItems
+      .filter((f) => f.level === selectedClass.level)
+      .reduce((s, f) => s + f.amount, 0);
+  }, [selectedClass, feeItems]);
+
+  useEffect(() => {
+    if (levelFeeTotal > 0) {
+      setForm((f) => ({ ...f, termFee: String(levelFeeTotal / 100) }));
+    }
+  }, [levelFeeTotal]);
 
   const set = (k: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -108,8 +127,15 @@ export default function NewStudentPage() {
           </Select>
         </Field>
 
-        <Field label="Term fee (₦)" hint="Only used if this class has no fee structure. Leave blank to bill from the class fees.">
-          <Input value={form.termFee} onChange={set("termFee")} inputMode="decimal" placeholder="e.g. 45,000" />
+        <Field
+          label="Term fee (₦)"
+          hint={
+            levelFeeTotal > 0
+              ? `Auto-filled from ${selectedClass!.level} fee structure (${formatNaira(levelFeeTotal, { kobo_decimals: false })}). You can adjust if needed.`
+              : "No fee structure for this class. Enter the term fee manually."
+          }
+        >
+          <NairaInput value={form.termFee} onValueChange={(v) => setForm((f) => ({ ...f, termFee: v }))} placeholder="e.g. 45,000" />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">

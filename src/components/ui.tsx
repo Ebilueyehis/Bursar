@@ -5,7 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { formatNairaSmart } from "@/lib/money";
+import { formatNairaSmart, formatNairaInput } from "@/lib/money";
 
 /** Tiny classnames joiner — avoids pulling in a dependency for this. */
 export function cn(...parts: (string | false | null | undefined)[]): string {
@@ -299,6 +299,29 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     <textarea
       className={cn(fieldBase, "py-3 min-h-24", props.className)}
       {...props}
+    />
+  );
+}
+
+/** Money input that auto-formats with thousand-separator commas as user types. */
+export function NairaInput({
+  value,
+  onValueChange,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
+  value: string;
+  onValueChange: (raw: string) => void;
+}) {
+  return (
+    <input
+      inputMode="decimal"
+      {...props}
+      className={cn(fieldBase, className)}
+      value={formatNairaInput(value)}
+      onChange={(e) => {
+        onValueChange(e.target.value.replace(/,/g, ""));
+      }}
     />
   );
 }

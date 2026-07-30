@@ -22,12 +22,13 @@ import {
   Input,
   LoadingBlock,
   Money,
+  NairaInput,
   Select,
   StatusPill,
   TextArea,
   cn,
 } from "@/components/ui";
-import { AlertIcon, CheckIcon } from "@/components/icons";
+import { AlertIcon, CheckIcon, PrintIcon } from "@/components/icons";
 import { Avatar } from "@/app/debtors/page";
 
 export default function RecordPaymentPage() {
@@ -236,11 +237,10 @@ function PaymentForm({
       )}
 
       <Field label="Amount received" error={error ?? undefined}>
-        <Input
-          inputMode="decimal"
+        <NairaInput
           placeholder="e.g. 45,000"
           value={amountText}
-          onChange={(e) => setAmountText(e.target.value)}
+          onValueChange={setAmountText}
           className="text-lg"
         />
       </Field>
@@ -353,9 +353,13 @@ function PaymentSuccess({
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3 no-print">
         <Button variant="secondary" onClick={onDone}>
           Record another
+        </Button>
+        <Button variant="ghost" onClick={() => window.print()}>
+          <PrintIcon width={18} height={18} />
+          Print
         </Button>
         <Link href={`/students/${account.student.id}`} className="contents">
           <Button variant="primary" className="w-full">

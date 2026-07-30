@@ -19,6 +19,7 @@ import {
   Input,
   LoadingBlock,
   Money,
+  NairaInput,
   PageHeader,
   Select,
   StatusPill,
@@ -248,7 +249,7 @@ function StaffForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Monthly salary">
-          <Input inputMode="decimal" value={salaryText} onChange={(e) => setSalaryText(e.target.value)} placeholder="e.g. 80,000" />
+          <NairaInput value={salaryText} onValueChange={setSalaryText} placeholder="e.g. 80,000" />
         </Field>
         <Field label="Phone (optional)">
           <Input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803…" />

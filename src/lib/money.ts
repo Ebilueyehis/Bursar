@@ -36,6 +36,20 @@ export function nairaToKobo(naira: number): Kobo {
  * Parse a free-text naira amount ("45,000", "₦45000.50", "45k") into kobo.
  * Returns null when the text can't be read as a positive amount.
  */
+/**
+ * Format a raw numeric string with thousand-separator commas as the user types.
+ * Strips non-digit/dot chars first, preserves at most one decimal point.
+ */
+export function formatNairaInput(raw: string): string {
+  const stripped = raw.replace(/[^0-9.]/g, "");
+  const parts = stripped.split(".");
+  const whole = parts[0] ?? "";
+  const formatted = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  if (parts.length > 1) return formatted + "." + parts[1];
+  if (raw.endsWith(".")) return formatted + ".";
+  return formatted;
+}
+
 export function parseNairaToKobo(text: string): Kobo | null {
   if (!text) return null;
   let cleaned = text.trim().toLowerCase().replace(/[₦,\s]/g, "");
