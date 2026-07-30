@@ -284,13 +284,14 @@ create policy read_bill_lines on bill_lines
             where b.id = bill_lines.bill_id and b.school_id = auth_school_id())
   );
 
--- Students & guardians: Proprietor, Bursar, and Teacher may manage. ---------
+-- Students & guardians: only Proprietor and Bursar may write. ----------------
+-- Teachers get read-only via the read_same_school policy above.
 create policy manage_students on students
-  for all using (school_id = auth_school_id())
-  with check (school_id = auth_school_id());
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 create policy manage_guardians on guardians
-  for all using (school_id = auth_school_id())
-  with check (school_id = auth_school_id());
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 
 -- Fees & bills: only Proprietor and Bursar may change. ----------------------
 create policy manage_fees on fee_items
@@ -347,9 +348,10 @@ revoke all on all tables in schema public from anon;
 revoke all on all tables in schema public from authenticated;
 
 grant select, insert, update, delete on table
-  schools, profiles, sessions, classes, guardians, students,
+  schools, sessions, classes, guardians, students,
   fee_items, bills, bill_lines, payments, staff, expenses
   to authenticated;
+grant select on table profiles to authenticated;          -- write blocked: role escalation prevention
 grant select on table student_balances to authenticated;  -- view is read-only
 
 -- service_role is the trusted, server-only admin role (secret key, never in the

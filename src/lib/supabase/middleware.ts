@@ -13,11 +13,12 @@ export async function updateSession(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If Supabase env isn't configured (e.g. env vars not set on the host), don't
-  // crash the whole site with a 500 — let the request through. Auth-dependent
-  // pages will simply show signed-out state until the env is set.
+  // Fail closed: if Supabase env vars are missing, deny access instead of
+  // letting unauthenticated requests through to all routes.
   if (!url || !anonKey) {
-    return response;
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    return NextResponse.redirect(redirectUrl);
   }
 
   const supabase = createServerClient(url, anonKey, {
