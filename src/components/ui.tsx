@@ -5,7 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { formatNairaSmart, formatNairaInput } from "@/lib/money";
+import { formatNaira, formatNairaInput } from "@/lib/money";
 
 /** Tiny classnames joiner — avoids pulling in a dependency for this. */
 export function cn(...parts: (string | false | null | undefined)[]): string {
@@ -87,7 +87,7 @@ export function Money({
   }[tone];
   return (
     <span className={cn("money font-semibold", toneClass, className)}>
-      {formatNairaSmart(kobo)}
+      {formatNaira(kobo)}
     </span>
   );
 }
