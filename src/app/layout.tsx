@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Inter } from "next/font/google";
 import "./globals.css";
 import { ViewerProvider } from "@/lib/viewer";
+import { ThemeProvider, NO_FLASH_THEME_SCRIPT } from "@/lib/theme";
 import { AppShell } from "@/components/AppShell";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
@@ -46,10 +47,15 @@ export default function RootLayout({
       lang="en"
       className={`${bricolage.variable} ${inter.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full">
-        <ViewerProvider>
-          <AppShell>{children}</AppShell>
-        </ViewerProvider>
+        <ThemeProvider>
+          <ViewerProvider>
+            <AppShell>{children}</AppShell>
+          </ViewerProvider>
+        </ThemeProvider>
         <ServiceWorkerRegister />
       </body>
     </html>
