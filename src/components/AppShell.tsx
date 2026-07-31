@@ -5,20 +5,15 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useViewer } from "@/lib/viewer";
 import type { Permission } from "@/lib/domain/constants";
-import { ROLE_LABELS, TERMS, can } from "@/lib/domain/constants";
+import { ROLE_LABELS, TERMS, can, termLabel } from "@/lib/domain/constants";
 import type { Role } from "@/lib/domain/types";
 import { cn } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { useOnline } from "@/lib/useOnline";
 import {
   DashboardIcon,
-  DebtorsIcon,
-  ExpenseIcon,
-  FeesIcon,
   LedgerIcon,
   PlusIcon,
-  ReportIcon,
-  StaffIcon,
   StudentsIcon,
 } from "@/components/icons";
 
@@ -30,21 +25,28 @@ interface NavItem {
   permission?: Permission;
 }
 
-/** The everyday tabs — also the mobile bottom bar. */
+/** Primary tabs — sidebar on desktop, the outer items of the mobile bottom bar. */
 const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
-  { href: "/debtors", label: "Owing", icon: DebtorsIcon },
   { href: "/students", label: "Students", icon: StudentsIcon },
   { href: "/ledger", label: "Ledger", icon: LedgerIcon, permission: "view_ledger" },
 ];
 
-/** Money-out & admin — desktop sidebar; reached from Ledger on mobile. */
-const SECONDARY_NAV: NavItem[] = [
-  { href: "/fees", label: "Fees", icon: FeesIcon, permission: "edit_fees" },
-  { href: "/expenses", label: "Expenses", icon: ExpenseIcon, permission: "manage_expenses" },
-  { href: "/staff", label: "Staff", icon: StaffIcon, permission: "manage_staff" },
-  { href: "/reports", label: "Reports", icon: ReportIcon, permission: "view_reports" },
+/** Screen titles keyed by their route base, longest match wins. */
+const TITLES: { base: string; title: string }[] = [
+  { base: "/students", title: "Students" },
+  { base: "/ledger", title: "Ledger" },
+  { base: "/entry", title: "New Entry" },
+  { base: "/profile", title: "Profile & settings" },
+  { base: "/", title: "Dashboard" },
 ];
+
+function titleFor(pathname: string): string {
+  const hit = TITLES.filter((t) =>
+    t.base === "/" ? pathname === "/" : pathname.startsWith(t.base),
+  ).sort((a, b) => b.base.length - a.base.length)[0];
+  return hit?.title ?? "Bursar";
+}
 
 function visibleNav(items: NavItem[], role: Role): NavItem[] {
   return items.filter((i) => !i.permission || can(role, i.permission));
@@ -52,6 +54,23 @@ function visibleNav(items: NavItem[], role: Role): NavItem[] {
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
+
+function initials(name: string): string {
+  return name
+    ? name.split(/\s+/).filter(Boolean).slice(-2).map((n) => n[0]).join("").toUpperCase()
+    : "•";
 }
 
 /** Public / auth routes render without the app chrome (sidebar, nav). */
@@ -70,7 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-10">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-10 md:pt-6">
           {ready ? children : null}
         </main>
         <BottomNav />
@@ -83,48 +102,48 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function Sidebar() {
   const pathname = usePathname();
-  const { school, role } = useViewer();
-  const showRecord = can(role, "record_payment");
+  const { school, role, actorName } = useViewer();
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col bg-ink px-3 py-5 text-[#EDEFF2] md:flex">
-      <div className="px-2">
-        <p className="font-display text-lg font-extrabold tracking-tight text-white">
-          Bursar
-        </p>
-        <p className="mt-0.5 truncate text-xs text-[#9aa4b2]">{school?.name}</p>
+      <div className="flex items-center gap-2.5 px-2">
+        <Logo dark />
+        <div className="leading-tight">
+          <p className="font-display text-lg font-extrabold tracking-tight text-white">
+            Bursar
+          </p>
+          <p className="mt-0.5 max-w-40 truncate text-xs text-[#9aa4b2]">
+            {school?.name}
+          </p>
+        </div>
       </div>
 
-      <nav className="mt-6 flex flex-col gap-0.5">
+      <nav className="mt-7 flex flex-col gap-0.5">
         {visibleNav(PRIMARY_NAV, role).map((item) => (
           <SidebarLink key={item.href} item={item} pathname={pathname} />
         ))}
-
-        {visibleNav(SECONDARY_NAV, role).length > 0 && (
-          <>
-            <p className="mt-5 mb-1 px-3 font-mono text-[10px] uppercase tracking-wider text-[#6b7686]">
-              Money out & admin
-            </p>
-            {visibleNav(SECONDARY_NAV, role).map((item) => (
-              <SidebarLink key={item.href} item={item} pathname={pathname} />
-            ))}
-          </>
-        )}
       </nav>
 
-      {showRecord && (
+      <div className="mt-auto pt-6">
         <Link
-          href="/pay"
-          className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover"
+          href="/profile"
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition",
+            isActive(pathname, "/profile")
+              ? "bg-white/[0.08]"
+              : "hover:bg-white/[0.05]",
+          )}
         >
-          <PlusIcon width={18} height={18} />
-          Record payment
+          <span className="flex size-8 items-center justify-center rounded-full bg-white/15 text-[11px] font-bold text-white">
+            {initials(actorName)}
+          </span>
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-sm font-semibold text-white">
+              {actorName || "Account"}
+            </span>
+            <span className="block text-xs text-[#9aa4b2]">{ROLE_LABELS[role]}</span>
+          </span>
         </Link>
-      )}
-
-      <div className="mt-auto space-y-3 pt-6">
-        <TermSelector variant="dark" />
-        <UserChip variant="dark" />
       </div>
     </aside>
   );
@@ -149,44 +168,68 @@ function SidebarLink({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-// --- Mobile top bar ----------------------------------------------------------
+// --- Top bar (responsive) ----------------------------------------------------
 
 function TopBar() {
-  const { school } = useViewer();
+  const pathname = usePathname();
+  const { actorName, role, school } = useViewer();
   const online = useOnline();
+  const showEntry = can(role, "record_payment");
+  const title = titleFor(pathname);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur md:hidden">
-      <div className="flex items-center justify-between px-4 pt-3">
-        <div className="flex items-center gap-2.5">
+    <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
+      <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-2.5 md:px-8">
+        {/* Mobile brand (sidebar is hidden) */}
+        <div className="flex items-center gap-2.5 md:hidden">
           <Logo />
-          <div className="leading-tight">
-            <p className="font-display text-sm font-extrabold text-ink">Bursar</p>
-            <p className="max-w-40 truncate text-xs text-ink-muted">
-              {school?.name ?? "…"}
-            </p>
-          </div>
+          <p className="max-w-28 truncate text-sm font-semibold text-ink">
+            {school?.name ?? "Bursar"}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Desktop greeting + screen title */}
+        <div className="hidden min-w-0 md:block">
+          {actorName && (
+            <p className="text-xs font-medium text-ink-faint">
+              {greeting()}, {firstName(actorName)}
+            </p>
+          )}
+          <h2 className="truncate font-display text-xl font-bold text-ink">{title}</h2>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
           {!online && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-tint px-2.5 py-1 font-mono text-[11px] font-semibold uppercase text-warning">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-tint px-2.5 py-1 text-[11px] font-semibold uppercase text-warning">
               <span className="size-1.5 rounded-full bg-warning" />
               Offline
             </span>
           )}
-          <UserChip variant="light" />
+          <TermBadge />
+          {showEntry && (
+            <Link
+              href="/entry"
+              className="hidden items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-on-primary transition hover:bg-primary-hover md:inline-flex"
+            >
+              <PlusIcon width={17} height={17} />
+              New Entry
+            </Link>
+          )}
+          <UserChip name={actorName} role={role} />
         </div>
-      </div>
-      <div className="px-4 pb-2.5 pt-2">
-        <TermSelector variant="light" />
       </div>
     </header>
   );
 }
 
-function Logo() {
+function Logo({ dark }: { dark?: boolean }) {
   return (
-    <span className="flex size-8 items-center justify-center rounded-lg bg-ink text-white">
+    <span
+      className={cn(
+        "flex size-8 items-center justify-center rounded-lg",
+        dark ? "bg-white/15 text-white" : "bg-ink text-white",
+      )}
+    >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
           d="M6 4h9a4 4 0 0 1 0 8H6zM6 12h10a4 4 0 0 1 0 8H6zM6 4v16"
@@ -200,60 +243,64 @@ function Logo() {
   );
 }
 
-// --- Shared: term selector ---------------------------------------------------
+// --- Subscription-style term badge -------------------------------------------
 
-function TermSelector({ variant }: { variant: "light" | "dark" }) {
+function TermBadge() {
   const { term, setTerm, session } = useViewer();
-  const dark = variant === "dark";
+  const year = (session?.name ?? "").replace("/", " / ");
+
   return (
-    <div className="flex items-center gap-2">
-      <div
-        className={cn(
-          "flex rounded-lg p-0.5",
-          dark ? "bg-white/10" : "bg-surface-sunken",
-        )}
-      >
+    <details className="group relative">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-border bg-surface-raised py-1 pl-1 pr-2 [&::-webkit-details-marker]:hidden">
+        <span className="flex size-7 items-center justify-center rounded-lg bg-primary-tint text-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+            <rect x="3.5" y="5" width="17" height="16" rx="2" />
+            <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+          </svg>
+        </span>
+        <span className="hidden text-left leading-tight sm:block">
+          <span className="block text-[13px] font-semibold text-ink">
+            {termLabel(term)}
+          </span>
+          {year && (
+            <span className="block text-[11px] tabular-nums text-ink-faint">{year}</span>
+          )}
+        </span>
+        <svg className="text-ink-faint" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </summary>
+      <div className="absolute right-0 z-30 mt-1 w-44 rounded-lg border border-border bg-surface-raised p-1 shadow-lg">
+        <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+          Switch term
+        </p>
         {TERMS.map((t) => (
           <button
             key={t.value}
             onClick={() => setTerm(t.value)}
             className={cn(
-              "rounded-md px-2.5 py-1 font-mono text-[11px] font-semibold uppercase transition",
+              "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm",
               term === t.value
-                ? dark
-                  ? "bg-white/15 text-white"
-                  : "bg-surface-raised text-ink shadow-sm"
-                : dark
-                  ? "text-[#9aa4b2]"
-                  : "text-ink-muted",
+                ? "bg-primary-tint font-semibold text-primary"
+                : "text-ink hover:bg-surface-sunken",
             )}
           >
-            {t.label.replace(" term", "")}
+            {t.label}
+            {term === t.value && (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            )}
           </button>
         ))}
       </div>
-      <span className={cn("text-xs", dark ? "text-[#9aa4b2]" : "text-ink-faint")}>
-        {session?.name}
-      </span>
-    </div>
+    </details>
   );
 }
 
-// --- Shared: user chip + sign out --------------------------------------------
+// --- User chip: avatar to profile, with sign out -----------------------------
 
-function UserChip({ variant }: { variant: "light" | "dark" }) {
-  const { actorName, role } = useViewer();
-  const dark = variant === "dark";
-  const initials = actorName
-    ? actorName
-        .split(" ")
-        .filter(Boolean)
-        .slice(-2)
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-    : "•";
-
+function UserChip({ name, role }: { name: string; role: Role }) {
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -262,32 +309,20 @@ function UserChip({ variant }: { variant: "light" | "dark" }) {
 
   return (
     <details className="group relative">
-      <summary
-        className={cn(
-          "flex cursor-pointer list-none items-center gap-2 rounded-full border px-2 py-1 text-xs font-semibold [&::-webkit-details-marker]:hidden",
-          dark ? "border-white/15 text-[#EDEFF2]" : "border-border bg-surface-raised text-ink",
-        )}
-      >
-        <span
-          className={cn(
-            "flex size-6 items-center justify-center rounded-full text-[10px] font-bold",
-            dark ? "bg-white/15 text-white" : "bg-primary-tint text-primary",
-          )}
-        >
-          {initials}
-        </span>
-        <span className="max-w-24 truncate">{actorName || "Account"}</span>
+      <summary className="flex size-9 cursor-pointer list-none items-center justify-center rounded-full bg-primary-tint text-[11px] font-bold text-primary [&::-webkit-details-marker]:hidden">
+        {initials(name)}
       </summary>
-      <div
-        className={cn(
-          "absolute z-30 mt-1 w-52 rounded-lg border border-border bg-surface-raised p-1 shadow-lg",
-          dark ? "bottom-full mb-1 left-0" : "right-0",
-        )}
-      >
+      <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-surface-raised p-1 shadow-lg">
         <div className="px-3 py-2">
-          <p className="truncate text-sm font-semibold text-ink">{actorName}</p>
+          <p className="truncate text-sm font-semibold text-ink">{name || "Account"}</p>
           <p className="text-xs text-ink-faint">{ROLE_LABELS[role]}</p>
         </div>
+        <Link
+          href="/profile"
+          className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-ink hover:bg-surface-sunken"
+        >
+          Profile & settings
+        </Link>
         <button
           onClick={signOut}
           className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-danger hover:bg-surface-sunken"
@@ -303,44 +338,76 @@ function UserChip({ variant }: { variant: "light" | "dark" }) {
 
 function BottomNav() {
   const pathname = usePathname();
-  const { role } = useViewer();
-  const showRecord = can(role, "record_payment");
+  const { role, actorName } = useViewer();
+  const showEntry = can(role, "record_payment");
   const items = visibleNav(PRIMARY_NAV, role);
+
+  // Dashboard · Students · (+New) · Ledger · Profile — the plus sits centre.
+  const left = items.slice(0, 2);
+  const right = items.slice(2);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-      <div
-        className="relative mx-auto grid max-w-3xl"
-        style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
-      >
-        {items.map((item) => {
-          const active = isActive(pathname, item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium",
-                active ? "text-primary" : "text-ink-muted",
-              )}
-            >
-              <Icon width={22} height={22} />
-              {item.label}
-            </Link>
-          );
-        })}
+      <div className="relative mx-auto flex max-w-3xl items-stretch justify-around">
+        {left.map((item) => (
+          <BottomLink key={item.href} item={item} pathname={pathname} />
+        ))}
 
-        {showRecord && (
+        {showEntry ? (
           <Link
-            href="/pay"
-            aria-label="Record payment"
-            className="absolute -top-6 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg ring-4 ring-background transition hover:bg-primary-hover"
+            href="/entry"
+            aria-label="New Entry"
+            className="relative flex w-16 shrink-0 items-center justify-center"
           >
-            <PlusIcon width={26} height={26} />
+            <span className="absolute -top-6 flex size-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg ring-4 ring-background transition hover:bg-primary-hover">
+              <PlusIcon width={26} height={26} />
+            </span>
           </Link>
+        ) : (
+          <span className="w-4 shrink-0" />
         )}
+
+        {right.map((item) => (
+          <BottomLink key={item.href} item={item} pathname={pathname} />
+        ))}
+
+        <Link
+          href="/profile"
+          className={cn(
+            "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium",
+            isActive(pathname, "/profile") ? "text-primary" : "text-ink-muted",
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-[22px] items-center justify-center rounded-full text-[9px] font-bold",
+              isActive(pathname, "/profile")
+                ? "bg-primary text-on-primary"
+                : "bg-surface-sunken text-ink-muted",
+            )}
+          >
+            {initials(actorName)}
+          </span>
+          Profile
+        </Link>
       </div>
     </nav>
+  );
+}
+
+function BottomLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = isActive(pathname, item.href);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium",
+        active ? "text-primary" : "text-ink-muted",
+      )}
+    >
+      <Icon width={22} height={22} />
+      {item.label}
+    </Link>
   );
 }
