@@ -135,6 +135,55 @@ choreography. Respect `prefers-reduced-motion`. Nothing moves without reason.
 - Excel export: wire real `.xlsx` generation (client-side) per data page.
 - Re-run the full security audit before AND after the build (standing rule).
 
+## IA revision (2026-07-31, after screenshot round)
+
+Supersedes the navigation + Record-payment + Settings sections above where they conflict.
+
+- **Primary nav (sidebar / bottom nav): Dashboard · Students · Ledger.** Record
+  payment removed from the sidebar.
+- **Top nav** carries, always: the **term badge**, the **New entry** button, and the
+  **profile avatar** (→ Profile hub).
+- **Term display = subscription badge** (SaaS "plan" chip inspo): medallion +
+  "Second Term" over "2025 / 2026". Click to switch term.
+- **New entry** = one screen with a **Payment (in) | Expense (out)** toggle — the plus
+  action covers both money-in and money-out. Label confirmed: **"New entry"**. On
+  mobile it's the centre + in the bottom nav.
+- **Students** defaults to a **list** (dense table: Student · Guardian · Phone ·
+  Balance · Status · Actions, with search, level/status filters, Export, Add, and
+  pagination — table-list inspo). Clicking a row opens the record (Details-first
+  tabs, printable receipts) with an "All students" back link.
+- **Profile hub** = left side-menu + right panel (SaaS account-page inspo). Panels:
+  **Account · Appearance (theme toggle) · Fees & discounts · Staff & payroll · User
+  roles.**
+  - Staff & payroll: **download a template → fill → upload for bulk import**, or add
+    one manually. Lists staff with role + salary.
+  - User roles: proprietor grants each member a role + record-money rights.
+- Dashboard unchanged. Ledger as designed (Credit/Debit).
+
+Reference prototype v2: `scratchpad/bursar-mockup.html` (published Artifact).
+
+## Refinements (2026-07-31, second screenshot round)
+
+Applies on top of the IA revision. Reflected in prototype v3.
+
+- **New Entry casing + icons:** button and screen title read **"New Entry"** (proper
+  case). Toggle labels **"Payment (In)"** / **"Expense (Out)"**. Payment icon is a
+  **down arrow** (money in), Expense icon is an **up arrow** (money out).
+- **Staff & payroll, manual add:** when the selected role is **Teacher**, reveal a
+  **"Subject taught"** dropdown (Nigerian subject list). Hidden for other roles.
+- **Students list = class-first:** **Class is its own column**, and the list sorts by
+  class from **Creche (low) to SSS 3 (high)** by default. The Class header is a sort
+  control: click (or Enter/Space) to flip Creche→SSS3 vs SSS3→Creche. Class rank
+  order: Creche, Nursery 1-2, KG 1-2, Basic 1-6, JSS 1-3, SSS 1-3.
+- **Rows per page:** every high-volume table (Students, Ledger, Outstanding,
+  student Payments) gets a **rows-per-page selector: 10 / 20 / 50 / 100** in the
+  pagination bar. Default 20.
+
 ## Open decisions
 1. ~~Ledger wording~~ — **Credit/Debit** (decided 2026-07-31).
-2. Excel export library/approach for the live build (raise with user at build time).
+2. ~~Excel export approach~~ — **SheetJS (`xlsx`), client-side `.xlsx`** on every
+   exportable table (decided 2026-07-31).
+3. ~~Where `/debtors`, `/expenses` (list), `/reports` land~~ — **folded** (decided
+   2026-07-31): debtors into Dashboard Outstanding table + Students owing-filter;
+   expenses into New Entry (Expense) + Ledger; reports into per-page Export. No
+   standalone routes retained.
