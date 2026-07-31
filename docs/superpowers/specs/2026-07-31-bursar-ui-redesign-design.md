@@ -179,6 +179,22 @@ Applies on top of the IA revision. Reflected in prototype v3.
   student Payments) gets a **rows-per-page selector: 10 / 20 / 50 / 100** in the
   pagination bar. Default 20.
 
+## Universal conventions (2026-07-31, third round)
+
+Apply everywhere, on every screen and in the live build.
+
+- **Money direction icon:** money **in** (payment, credit, received) always uses a
+  **down arrow**; money **out** (expense, debit, spent) always uses an **up arrow**.
+  One rule across entry toggle, ledger chips, dashboard stat chips, and anywhere a
+  flow direction is shown.
+- **Class column is first:** in every table that lists students, **Class is its own
+  column and comes first**, then Name, then the rest. Sorting stays on the Class
+  header (Creche low to SSS 3 high, click to flip).
+- **Proper casing:** user-facing text uses proper case (first letter uppercase, the
+  rest lowercase per word as appropriate) rather than all-caps. Table headers and
+  data-field labels render proper case, not uppercase. Small letter-spaced section
+  kickers (eyebrows) may stay in their stylistic treatment.
+
 ## Open decisions
 1. ~~Ledger wording~~ — **Credit/Debit** (decided 2026-07-31).
 2. ~~Excel export approach~~ — **SheetJS (`xlsx`), client-side `.xlsx`** on every
