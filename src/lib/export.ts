@@ -16,3 +16,18 @@ export function exportToXlsx(
   const name = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
   XLSX.writeFile(workbook, name);
 }
+
+/** Read the first sheet of an uploaded .xlsx/.csv into keyed rows (header row). */
+export async function readSheetRows(
+  file: File,
+): Promise<Record<string, string>[]> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const first = workbook.SheetNames[0];
+  if (!first) return [];
+  const sheet = workbook.Sheets[first];
+  return XLSX.utils.sheet_to_json<Record<string, string>>(sheet, {
+    defval: "",
+    raw: false,
+  });
+}

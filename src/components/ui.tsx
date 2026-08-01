@@ -183,12 +183,12 @@ export function Banner({
   children?: ReactNode;
 }) {
   const styles = {
-    error: "bg-danger-tint border-danger",
-    success: "bg-success-tint border-success",
-    info: "bg-slate-tint border-slate",
+    error: "bg-danger-tint border-danger/30",
+    success: "bg-success-tint border-success/30",
+    info: "bg-slate-tint border-slate/30",
   }[tone];
   return (
-    <div className={cn("rounded-lg border-l-4 px-4 py-3 text-sm text-ink", styles)}>
+    <div className={cn("rounded-lg border px-4 py-3 text-sm text-ink", styles)}>
       {title && <p className="font-semibold">{title}</p>}
       {children && <p className={cn(title && "mt-0.5", "text-ink-muted")}>{children}</p>}
     </div>
