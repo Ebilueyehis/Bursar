@@ -103,7 +103,7 @@ export default function NewStudentPage() {
       <h1 className="mb-1 font-display text-2xl font-extrabold text-ink">Add a student</h1>
       <p className="mb-5 text-sm text-ink-muted">
         Recorded by {actorName}. If this class has a fee structure, it&apos;s
-        applied automatically — set it under Fees.
+        applied automatically. Set it under Fees.
       </p>
 
       <div className="space-y-4">
@@ -141,7 +141,7 @@ export default function NewStudentPage() {
         <div className="grid grid-cols-2 gap-3">
           <Field label="Gender">
             <Select value={form.gender} onChange={set("gender")}>
-              <option value="">—</option>
+              <option value="">Select a class</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
             </Select>

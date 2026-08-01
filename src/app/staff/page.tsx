@@ -50,7 +50,7 @@ export default function StaffPage() {
     <div>
       <PageHeader
         title="Staff"
-        subtitle="Your salary register — who you pay, and how much each month."
+        subtitle="Your salary register: who you pay, and how much each month."
         action={
           <Button onClick={() => { setEditing(null); setShowForm(true); }}>
             <PlusIcon width={18} height={18} /> Add staff

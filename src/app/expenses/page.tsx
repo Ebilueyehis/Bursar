@@ -58,7 +58,7 @@ export default function ExpensesPage() {
     <div>
       <PageHeader
         title="Expenses"
-        subtitle="Every naira the school spends — vendors, bills, and salaries."
+        subtitle="Every naira the school spends on vendors, bills, and salaries."
         action={
           <Button onClick={() => { setEditing(null); setShowForm(true); }}>
             <PlusIcon width={18} height={18} /> Add expense
@@ -89,7 +89,7 @@ export default function ExpensesPage() {
         <EmptyState
           icon={<ExpenseIcon width={28} height={28} />}
           title="No expenses recorded yet"
-          description="Add your first expense — rent, utilities, supplies, or a salary payment."
+          description="Add your first expense: rent, utilities, supplies, or a salary payment."
         />
       ) : (
         <>

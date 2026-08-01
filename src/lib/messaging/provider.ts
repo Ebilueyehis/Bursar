@@ -57,7 +57,7 @@ export const templates = {
         : `Outstanding balance is now ${formatNaira(newBalance)}.`;
     return (
       `Payment of ${formatNaira(amount)} received for ${studentName}. ` +
-      `Receipt ${receiptNo}. ${balanceLine} — ${schoolName}`
+      `Receipt ${receiptNo}. ${balanceLine}. ${schoolName}`
     );
   },
 };

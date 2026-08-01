@@ -94,7 +94,7 @@ function buildAccount(student: Student, term: TermName): StudentAccount | null {
     paid <= 0 ? "unpaid" : outstanding <= 0 ? "paid" : "partial";
   return {
     student,
-    className: cls?.name ?? "—",
+    className: cls?.name ?? "-",
     guardian,
     bill,
     billTotal,
@@ -451,7 +451,7 @@ export const mockRepository: Repository = {
         id: `e-sal-${staff.id}-${period}`,
         schoolId: SCHOOL.id,
         payee: staff.fullName,
-        description: `Salary — ${period}`,
+        description: `Salary: ${period}`,
         category: "Salary",
         cadence: "monthly",
         amount: staff.monthlySalary,

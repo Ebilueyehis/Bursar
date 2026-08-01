@@ -20,7 +20,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Bursar — Every naira accounted for",
+  title: "Bursar: Every naira accounted for",
   description:
     "A digital school administrator for Nigerian schools: student records, fees, and every payment accounted for in one place.",
   applicationName: "Bursar",

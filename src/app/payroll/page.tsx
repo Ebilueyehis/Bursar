@@ -94,8 +94,8 @@ export default function PayrollPage() {
         <div className="mb-4">
           <Banner tone="success" title={`Payroll run for ${formatPeriod(period)}`}>
             {result.created > 0
-              ? `Paid ${result.created} ${result.created === 1 ? "person" : "people"} — total ${nairaFromKobo(result.totalPaidKobo)}.`
-              : "Everyone was already paid for this month — nothing was charged twice."}
+              ? `Paid ${result.created} ${result.created === 1 ? "person" : "people"}, total ${nairaFromKobo(result.totalPaidKobo)}.`
+              : "Everyone was already paid for this month, nothing was charged twice."}
             {result.skipped > 0 && ` ${result.skipped} skipped (already paid or no salary set).`}
           </Banner>
         </div>

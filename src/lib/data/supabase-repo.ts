@@ -209,11 +209,11 @@ function buildAccount(studentRow: Row, billRow: Row | undefined, term: TermName,
 
   return {
     student,
-    className: (cls?.name as string) ?? "—",
+    className: (cls?.name as string) ?? "-",
     guardian: {
       id: (guardianRow?.id as string) ?? "",
       schoolId: student.schoolId,
-      fullName: (guardianRow?.full_name as string) ?? "—",
+      fullName: (guardianRow?.full_name as string) ?? "-",
       phone: (guardianRow?.phone as string) ?? "",
       altPhone: (guardianRow?.alt_phone as string) ?? undefined,
       email: (guardianRow?.email as string) ?? undefined,
@@ -681,7 +681,7 @@ export const supabaseRepository: Repository = {
       school_id: school.id,
       session_id: session?.id ?? null,
       payee: r.staff.fullName,
-      description: `Salary — ${period}`,
+      description: `Salary: ${period}`,
       category: "Salary",
       cadence: "monthly" as const,
       amount_kobo: r.staff.monthlySalary,

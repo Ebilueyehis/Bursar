@@ -129,11 +129,11 @@ function PanelShell({
 function AccountPanel() {
   const { school, session, actorName, role, term } = useViewer();
   const rows: { k: string; v: string }[] = [
-    { k: "Your name", v: actorName || "—" },
+    { k: "Your name", v: actorName || "-" },
     { k: "Your role", v: ROLE_LABELS[role] },
-    { k: "School", v: school?.name ?? "—" },
-    { k: "School code", v: school?.code ?? "—" },
-    { k: "Session", v: session?.name ?? "—" },
+    { k: "School", v: school?.name ?? "-" },
+    { k: "School code", v: school?.code ?? "-" },
+    { k: "Session", v: session?.name ?? "-" },
     { k: "Current term", v: termLabel(term) },
     { k: "School phone", v: school?.phone ?? "Not set" },
     { k: "Address", v: school?.address ?? "Not set" },
@@ -243,7 +243,7 @@ function StaffPanel() {
                   <tr key={s.id} className="border-b border-border last:border-0">
                     <Td className="font-semibold">{s.fullName}</Td>
                     <Td className="text-ink-muted">
-                      {s.assignment || (s.employmentType === "teaching" ? "Teaching" : "—")}
+                      {s.assignment || (s.employmentType === "teaching" ? "Teaching" : "-")}
                     </Td>
                     <Td>{s.employmentType === "teaching" ? "Teaching" : "Non-teaching"}</Td>
                     <td className="px-4 py-2.5">
@@ -574,7 +574,7 @@ function RolesPanel() {
                 {users.map((u) => (
                   <tr key={u.id} className="border-b border-border last:border-0">
                     <Td className="font-semibold">{u.fullName}</Td>
-                    <Td className="text-ink-muted">{u.email ?? "—"}</Td>
+                    <Td className="text-ink-muted">{u.email ?? "-"}</Td>
                     <td className="px-4 py-2.5">
                       <StatusPill tone="neutral">{ROLE_LABELS[u.role]}</StatusPill>
                     </td>
