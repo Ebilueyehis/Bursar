@@ -5,7 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { formatNairaSmart } from "@/lib/money";
+import { formatNaira, formatNairaInput } from "@/lib/money";
 
 /** Tiny classnames joiner — avoids pulling in a dependency for this. */
 export function cn(...parts: (string | false | null | undefined)[]): string {
@@ -87,7 +87,7 @@ export function Money({
   }[tone];
   return (
     <span className={cn("money font-semibold", toneClass, className)}>
-      {formatNairaSmart(kobo)}
+      {formatNaira(kobo)}
     </span>
   );
 }
@@ -183,12 +183,12 @@ export function Banner({
   children?: ReactNode;
 }) {
   const styles = {
-    error: "bg-danger-tint border-danger",
-    success: "bg-success-tint border-success",
-    info: "bg-slate-tint border-slate",
+    error: "bg-danger-tint border-danger/30",
+    success: "bg-success-tint border-success/30",
+    info: "bg-slate-tint border-slate/30",
   }[tone];
   return (
-    <div className={cn("rounded-lg border-l-4 px-4 py-3 text-sm text-ink", styles)}>
+    <div className={cn("rounded-lg border px-4 py-3 text-sm text-ink", styles)}>
       {title && <p className="font-semibold">{title}</p>}
       {children && <p className={cn(title && "mt-0.5", "text-ink-muted")}>{children}</p>}
     </div>
@@ -299,6 +299,29 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     <textarea
       className={cn(fieldBase, "py-3 min-h-24", props.className)}
       {...props}
+    />
+  );
+}
+
+/** Money input that auto-formats with thousand-separator commas as user types. */
+export function NairaInput({
+  value,
+  onValueChange,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
+  value: string;
+  onValueChange: (raw: string) => void;
+}) {
+  return (
+    <input
+      inputMode="decimal"
+      {...props}
+      className={cn(fieldBase, className)}
+      value={formatNairaInput(value)}
+      onChange={(e) => {
+        onValueChange(e.target.value.replace(/,/g, ""));
+      }}
     />
   );
 }

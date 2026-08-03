@@ -57,7 +57,7 @@ export default function LoginPage() {
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-white/70">
           Connect a Google account and every student record and receipt is
-          backed up automatically — so nothing is lost if this phone is lost or
+          backed up automatically, so nothing is lost if this phone is lost or
           changed.
         </p>
 

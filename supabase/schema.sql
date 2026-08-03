@@ -21,6 +21,8 @@ create type user_role   as enum ('proprietor', 'bursar', 'teacher');
 create type term_name   as enum ('first', 'second', 'third');
 create type pay_method  as enum ('cash', 'transfer', 'pos', 'online');
 create type student_status as enum ('active', 'graduated', 'withdrawn');
+create type staff_type      as enum ('teaching', 'non_teaching');
+create type expense_cadence as enum ('one_off', 'monthly', 'yearly');
 
 -- ---------------------------------------------------------------------------
 -- Core tenancy: schools and the people who use Bursar
@@ -114,6 +116,7 @@ create table bills (
   session_id    uuid not null references sessions(id) on delete cascade,
   term          term_name not null,
   discount_kobo bigint not null default 0 check (discount_kobo >= 0),
+  discount_reason text,                          -- e.g. 'Scholarship', 'Sibling'
   created_on    date not null default current_date,
   unique (student_id, session_id, term)
 );
@@ -149,6 +152,57 @@ create index on students (school_id, class_id);
 create index on bills (school_id, session_id, term);
 create index on payments (bill_id);
 create index on payments (school_id, paid_on);
+
+-- ---------------------------------------------------------------------------
+-- Money out: staff register and the expenses ledger (Bursar v1.1)
+-- ---------------------------------------------------------------------------
+-- Staff are people the school pays a salary — kept separate from `profiles`
+-- (Bursar logins). `assignment` holds the class a primary teacher takes or the
+-- subjects a secondary teacher takes; salary is the monthly amount.
+create table staff (
+  id                  uuid primary key default gen_random_uuid(),
+  school_id           uuid not null references schools(id) on delete cascade,
+  full_name           text not null,
+  title               text,
+  employment_type     staff_type not null default 'teaching',
+  assignment          text,
+  monthly_salary_kobo bigint not null default 0 check (monthly_salary_kobo >= 0),
+  phone               text,
+  active              boolean not null default true,
+  created_at          timestamptz not null default now()
+);
+
+-- The single money-out ledger: vendor spend AND staff salaries live here, so
+-- the daily ledger can union payments (in) with expenses (out). cadence tags a
+-- row one-off / monthly / yearly. When staff_id + salary_period are set the row
+-- is a salary payment, and the unique index below blocks paying a staff member
+-- twice for the same month.
+create table expenses (
+  id               uuid primary key default gen_random_uuid(),
+  school_id        uuid not null references schools(id) on delete cascade,
+  session_id       uuid references sessions(id) on delete set null,
+  payee            text not null,
+  description      text not null,
+  category         text not null,
+  cadence          expense_cadence not null default 'one_off',
+  amount_kobo      bigint not null check (amount_kobo > 0),
+  spent_on         date not null default current_date,
+  method           pay_method not null default 'cash',
+  staff_id         uuid references staff(id) on delete set null,
+  salary_period    text,                          -- 'YYYY-MM' for salary rows
+  recorded_by      uuid references profiles(id),
+  recorded_by_name text not null,
+  note             text,
+  created_at       timestamptz not null default now()
+);
+
+create unique index expenses_staff_salary_period_uq
+  on expenses (staff_id, salary_period)
+  where staff_id is not null and salary_period is not null;
+
+create index on staff (school_id, active);
+create index on expenses (school_id, spent_on);
+create index on expenses (school_id, category);
 
 -- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
@@ -202,6 +256,8 @@ alter table fee_items  enable row level security;
 alter table bills      enable row level security;
 alter table bill_lines enable row level security;
 alter table payments   enable row level security;
+alter table staff      enable row level security;
+alter table expenses   enable row level security;
 
 -- Everyone signed in may read rows for their own school. -------------------
 create policy read_same_school on schools
@@ -228,13 +284,14 @@ create policy read_bill_lines on bill_lines
             where b.id = bill_lines.bill_id and b.school_id = auth_school_id())
   );
 
--- Students & guardians: Proprietor, Bursar, and Teacher may manage. ---------
+-- Students & guardians: only Proprietor and Bursar may write. ----------------
+-- Teachers get read-only via the read_same_school policy above.
 create policy manage_students on students
-  for all using (school_id = auth_school_id())
-  with check (school_id = auth_school_id());
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 create policy manage_guardians on guardians
-  for all using (school_id = auth_school_id())
-  with check (school_id = auth_school_id());
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 
 -- Fees & bills: only Proprietor and Bursar may change. ----------------------
 create policy manage_fees on fee_items
@@ -271,6 +328,16 @@ create policy record_payment on payments
                 where s.id = student_id and s.school_id = auth_school_id())
   );
 
+-- Staff & expenses (money out): only Proprietor and Bursar may read or manage.
+-- Teachers have no access at all. Expenses allow UPDATE/DELETE by design — a
+-- cashbook needs corrections (unlike append-only payment receipts).
+create policy manage_staff on staff
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
+create policy manage_expenses on expenses
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
+
 -- ============================================================================
 -- Grants — least privilege for the PostgREST API roles
 -- ============================================================================
@@ -281,9 +348,10 @@ revoke all on all tables in schema public from anon;
 revoke all on all tables in schema public from authenticated;
 
 grant select, insert, update, delete on table
-  schools, profiles, sessions, classes, guardians, students,
-  fee_items, bills, bill_lines, payments
+  schools, sessions, classes, guardians, students,
+  fee_items, bills, bill_lines, payments, staff, expenses
   to authenticated;
+grant select on table profiles to authenticated;          -- write blocked: role escalation prevention
 grant select on table student_balances to authenticated;  -- view is read-only
 
 -- service_role is the trusted, server-only admin role (secret key, never in the

@@ -51,7 +51,7 @@ export default function DashboardPage() {
                   ? "Every balance is cleared. Everything is accounted for."
                   : `${stats.debtorCount} ${
                       stats.debtorCount === 1 ? "student" : "students"
-                    } owing — oldest first`}
+                    } owing, oldest first`}
               </p>
             </div>
           </Link>

@@ -113,6 +113,7 @@ export interface Bill {
   term: TermName;
   lines: BillLine[];
   discount: Kobo;
+  discountReason?: string;
   createdOn: string; // ISO date — drives "oldest first" debtor ordering
 }
 
@@ -133,6 +134,68 @@ export interface Payment {
   paidOn: string; // ISO date
   recordedByName: string;
   note?: string;
+}
+
+// --- Money out: staff, expenses, and the unified ledger ----------------------
+
+export type StaffType = "teaching" | "non_teaching";
+
+/** A person the school pays a salary. Kept separate from Bursar logins. */
+export interface Staff {
+  id: string;
+  schoolId: string;
+  fullName: string;
+  title?: string;
+  employmentType: StaffType;
+  /** Class taken (primary) or subjects taken (secondary). Free text. */
+  assignment?: string;
+  monthlySalary: Kobo;
+  phone?: string;
+  active: boolean;
+}
+
+/** How often a cost recurs. Descriptive metadata, surfaced on the ledger. */
+export type ExpenseCadence = "one_off" | "monthly" | "yearly";
+
+/** A single money-out entry: vendor spend or a staff salary payment. */
+export interface Expense {
+  id: string;
+  schoolId: string;
+  payee: string;
+  description: string;
+  category: string; // Rent, Utilities, Salary, Maintenance...
+  cadence: ExpenseCadence;
+  amount: Kobo;
+  spentOn: string; // ISO date — date of service/delivery
+  method: PaymentMethod;
+  /** Set when this expense is a salary payment. */
+  staffId?: string;
+  /** 'YYYY-MM' when this is a salary payment; drives payroll idempotency. */
+  salaryPeriod?: string;
+  recordedByName: string;
+  note?: string;
+}
+
+/** One line in the daily ledger — a payment (in) or an expense (out). */
+export interface LedgerEntry {
+  id: string;
+  date: string; // ISO date
+  kind: "payment" | "expense";
+  direction: "in" | "out";
+  title: string; // student name / payee
+  subtitle: string; // receipt no + method / category + cadence
+  amount: Kobo;
+  method: PaymentMethod;
+  reference: string; // studentId or expenseId, for linking
+}
+
+/** A day's worth of ledger entries with its totals. */
+export interface LedgerDay {
+  date: string; // ISO date
+  entries: LedgerEntry[];
+  totalIn: Kobo;
+  totalOut: Kobo;
+  net: Kobo; // totalIn − totalOut
 }
 
 /** A student with their bill and payment math resolved for a given term. */

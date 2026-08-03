@@ -1,4 +1,9 @@
-import type { Role, TermName } from "@/lib/domain/types";
+import type {
+  ExpenseCadence,
+  PaymentMethod,
+  Role,
+  TermName,
+} from "@/lib/domain/types";
 
 /** Terms in order. Nigerian schools run three terms per session. */
 export const TERMS: { value: TermName; label: string }[] = [
@@ -65,6 +70,8 @@ export type Permission =
   | "import_students"
   | "send_reminders"
   | "manage_staff"
+  | "manage_expenses"
+  | "view_ledger"
   | "view_reports";
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -77,6 +84,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "import_students",
     "send_reminders",
     "manage_staff",
+    "manage_expenses",
+    "view_ledger",
     "view_reports",
   ],
   bursar: [
@@ -87,10 +96,39 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "manage_students",
     "import_students",
     "send_reminders",
+    "manage_staff",
+    "manage_expenses",
+    "view_ledger",
     "view_reports",
   ],
   teacher: ["view_dashboard", "view_debtors", "manage_students"],
 };
+
+/** Common expense categories for a Nigerian school. Seed only — free text. */
+export const EXPENSE_CATEGORIES: string[] = [
+  "Salary",
+  "Rent",
+  "Utilities",
+  "Maintenance",
+  "Supplies",
+  "Transport",
+  "Feeding",
+  "Examination",
+  "Miscellaneous",
+];
+
+export const EXPENSE_CADENCES: { value: ExpenseCadence; label: string }[] = [
+  { value: "one_off", label: "One-off" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+];
+
+export const PAY_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: "cash", label: "Cash" },
+  { value: "transfer", label: "Transfer" },
+  { value: "pos", label: "POS" },
+  { value: "online", label: "Online" },
+];
 
 export function can(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role].includes(permission);

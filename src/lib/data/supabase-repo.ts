@@ -1,24 +1,36 @@
 import { createClient } from "@/lib/supabase/client";
 import type {
   Bill,
+  Expense,
+  FeeItem,
+  LedgerDay,
+  LedgerEntry,
   Payment,
   School,
   SchoolClass,
   Session,
+  Staff,
   Student,
   StudentAccount,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
 import type {
+  CreateExpenseInput,
+  CreateStaffInput,
   CreateStudentInput,
   DashboardStats,
+  DateFilter,
+  FeeLineInput,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
+  PayrollPreview,
+  PayrollResult,
   RecordPaymentInput,
   Repository,
 } from "@/lib/data/repository";
+import { groupLedger } from "@/lib/data/ledger";
 
 /**
  * Supabase-backed implementation of the Repository. Uses the browser client, so
@@ -98,6 +110,51 @@ function mapPayment(r: Row): Payment {
   };
 }
 
+function mapStaff(r: Row): Staff {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    fullName: r.full_name as string,
+    title: (r.title as string) ?? undefined,
+    employmentType: (r.employment_type as Staff["employmentType"]) ?? "teaching",
+    assignment: (r.assignment as string) ?? undefined,
+    monthlySalary: Number(r.monthly_salary_kobo ?? 0),
+    phone: (r.phone as string) ?? undefined,
+    active: (r.active as boolean) ?? true,
+  };
+}
+
+function mapExpense(r: Row): Expense {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    payee: r.payee as string,
+    description: r.description as string,
+    category: r.category as string,
+    cadence: r.cadence as Expense["cadence"],
+    amount: Number(r.amount_kobo),
+    spentOn: r.spent_on as string,
+    method: r.method as Expense["method"],
+    staffId: (r.staff_id as string) ?? undefined,
+    salaryPeriod: (r.salary_period as string) ?? undefined,
+    recordedByName: r.recorded_by_name as string,
+    note: (r.note as string) ?? undefined,
+  };
+}
+
+function mapFeeItem(r: Row): FeeItem {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    sessionId: r.session_id as string,
+    term: r.term as TermName,
+    level: r.level as string,
+    name: r.name as string,
+    amount: Number(r.amount_kobo),
+    optional: (r.optional as boolean) ?? false,
+  };
+}
+
 // --- context (school + current session) -------------------------------------
 
 async function getContext(): Promise<{ school: School | null; session: Session | null }> {
@@ -140,6 +197,7 @@ function buildAccount(studentRow: Row, billRow: Row | undefined, term: TermName,
     term,
     lines,
     discount,
+    discountReason: (billRow?.discount_reason as string) ?? undefined,
     createdOn: (billRow?.created_on as string) ?? student.enrolledOn,
   };
 
@@ -151,11 +209,11 @@ function buildAccount(studentRow: Row, billRow: Row | undefined, term: TermName,
 
   return {
     student,
-    className: (cls?.name as string) ?? "—",
+    className: (cls?.name as string) ?? "-",
     guardian: {
       id: (guardianRow?.id as string) ?? "",
       schoolId: student.schoolId,
-      fullName: (guardianRow?.full_name as string) ?? "—",
+      fullName: (guardianRow?.full_name as string) ?? "-",
       phone: (guardianRow?.phone as string) ?? "",
       altPhone: (guardianRow?.alt_phone as string) ?? undefined,
       email: (guardianRow?.email as string) ?? undefined,
@@ -366,8 +424,33 @@ export const supabaseRepository: Repository = {
       .single();
     if (sErr || !student) throw new Error("Couldn't save the student record.");
 
-    // Create this term's bill from the provided term fee (a single line).
-    if (input.termFeeKobo > 0) {
+    // Bill this term. Prefer the class level's fee structure; fall back to the
+    // manually typed term fee when no structure is set for that level yet.
+    const { data: cls } = await client
+      .from("classes")
+      .select("level")
+      .eq("id", input.classId)
+      .maybeSingle();
+    const level = (cls?.level as string) ?? "";
+
+    const { data: feeItems } = await client
+      .from("fee_items")
+      .select("name, amount_kobo")
+      .eq("session_id", session.id)
+      .eq("term", school.currentTerm)
+      .eq("level", level);
+
+    let lines: { name: string; amount_kobo: number }[] = [];
+    if (feeItems && feeItems.length > 0) {
+      lines = feeItems.map((f) => ({
+        name: f.name as string,
+        amount_kobo: Number(f.amount_kobo),
+      }));
+    } else if (input.termFeeKobo > 0) {
+      lines = [{ name: "Term fee", amount_kobo: input.termFeeKobo }];
+    }
+
+    if (lines.length > 0) {
       const { data: bill } = await client
         .from("bills")
         .insert({
@@ -379,11 +462,9 @@ export const supabaseRepository: Repository = {
         .select("id")
         .single();
       if (bill) {
-        await client.from("bill_lines").insert({
-          bill_id: bill.id,
-          name: "Term fee",
-          amount_kobo: input.termFeeKobo,
-        });
+        await client
+          .from("bill_lines")
+          .insert(lines.map((l) => ({ bill_id: bill.id, ...l })));
       }
     }
 
@@ -439,5 +520,380 @@ export const supabaseRepository: Repository = {
       }
     }
     return { imported, failed: rows.length - imported, results };
+  },
+
+  // --- Money out ------------------------------------------------------------
+
+  async listExpenses(filter?: DateFilter): Promise<Expense[]> {
+    const client = sb();
+    let q = client.from("expenses").select("*").order("spent_on", { ascending: false });
+    if (filter?.from) q = q.gte("spent_on", filter.from);
+    if (filter?.to) q = q.lte("spent_on", filter.to);
+    const { data } = await q;
+    return (data ?? []).map(mapExpense);
+  },
+
+  async createExpense(input: CreateExpenseInput): Promise<Expense> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    if (input.amountKobo <= 0) throw new Error("Enter an amount greater than zero.");
+    const { data: { user } } = await client.auth.getUser();
+
+    const { data, error } = await client
+      .from("expenses")
+      .insert({
+        school_id: school.id,
+        session_id: session?.id ?? null,
+        payee: input.payee,
+        description: input.description,
+        category: input.category,
+        cadence: input.cadence,
+        amount_kobo: input.amountKobo,
+        spent_on: input.spentOn,
+        method: input.method,
+        recorded_by: user?.id ?? null,
+        recorded_by_name: input.recordedByName,
+        note: input.note ?? null,
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      throw new Error("This expense couldn't be saved. No money was affected. Please try again.");
+    }
+    return mapExpense(data);
+  },
+
+  async updateExpense(id: string, patch: CreateExpenseInput): Promise<Expense> {
+    const client = sb();
+    if (patch.amountKobo <= 0) throw new Error("Enter an amount greater than zero.");
+    const { data, error } = await client
+      .from("expenses")
+      .update({
+        payee: patch.payee,
+        description: patch.description,
+        category: patch.category,
+        cadence: patch.cadence,
+        amount_kobo: patch.amountKobo,
+        spent_on: patch.spentOn,
+        method: patch.method,
+        note: patch.note ?? null,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("This expense couldn't be updated.");
+    return mapExpense(data);
+  },
+
+  async deleteExpense(id: string): Promise<void> {
+    const { error } = await sb().from("expenses").delete().eq("id", id);
+    if (error) throw new Error("This expense couldn't be deleted.");
+  },
+
+  async listStaff(): Promise<Staff[]> {
+    const { data } = await sb().from("staff").select("*").order("full_name");
+    return (data ?? []).map(mapStaff);
+  },
+
+  async createStaff(input: CreateStaffInput): Promise<Staff> {
+    const client = sb();
+    const { school } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    const { data, error } = await client
+      .from("staff")
+      .insert({
+        school_id: school.id,
+        full_name: input.fullName,
+        title: input.title ?? null,
+        employment_type: input.employmentType,
+        assignment: input.assignment ?? null,
+        monthly_salary_kobo: input.monthlySalaryKobo,
+        phone: input.phone ?? null,
+      })
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("Couldn't save this staff member.");
+    return mapStaff(data);
+  },
+
+  async updateStaff(id: string, patch: CreateStaffInput): Promise<Staff> {
+    const { data, error } = await sb()
+      .from("staff")
+      .update({
+        full_name: patch.fullName,
+        title: patch.title ?? null,
+        employment_type: patch.employmentType,
+        assignment: patch.assignment ?? null,
+        monthly_salary_kobo: patch.monthlySalaryKobo,
+        phone: patch.phone ?? null,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("Couldn't update this staff member.");
+    return mapStaff(data);
+  },
+
+  async setStaffActive(id: string, active: boolean): Promise<void> {
+    const { error } = await sb().from("staff").update({ active }).eq("id", id);
+    if (error) throw new Error("Couldn't update this staff member.");
+  },
+
+  async previewPayroll(period: string): Promise<PayrollPreview> {
+    const client = sb();
+    const { data: staffRows } = await client
+      .from("staff")
+      .select("*")
+      .eq("active", true)
+      .order("full_name");
+    const { data: paidRows } = await client
+      .from("expenses")
+      .select("staff_id")
+      .eq("salary_period", period);
+    const paid = new Set((paidRows ?? []).map((r) => r.staff_id as string));
+
+    const rows = (staffRows ?? []).map((r) => {
+      const staff = mapStaff(r);
+      return { staff, alreadyPaid: paid.has(staff.id) };
+    });
+    const totalToPayKobo = rows
+      .filter((r) => !r.alreadyPaid)
+      .reduce((sum, r) => sum + r.staff.monthlySalary, 0);
+    return { period, rows, totalToPayKobo };
+  },
+
+  async runPayroll(period: string, recordedByName: string): Promise<PayrollResult> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    const { data: { user } } = await client.auth.getUser();
+
+    const preview = await this.previewPayroll(period);
+    const toPay = preview.rows.filter(
+      (r) => !r.alreadyPaid && r.staff.monthlySalary > 0,
+    );
+    if (toPay.length === 0) {
+      return { created: 0, skipped: preview.rows.length, totalPaidKobo: 0 };
+    }
+
+    const rows = toPay.map((r) => ({
+      school_id: school.id,
+      session_id: session?.id ?? null,
+      payee: r.staff.fullName,
+      description: `Salary: ${period}`,
+      category: "Salary",
+      cadence: "monthly" as const,
+      amount_kobo: r.staff.monthlySalary,
+      spent_on: `${period}-28`,
+      method: "transfer" as const,
+      staff_id: r.staff.id,
+      salary_period: period,
+      recorded_by: user?.id ?? null,
+      recorded_by_name: recordedByName,
+    }));
+
+    // Ignore-duplicates guards against a concurrent run double-paying: the
+    // unique (staff_id, salary_period) index rejects repeats.
+    const { data, error } = await client
+      .from("expenses")
+      .upsert(rows, { onConflict: "staff_id,salary_period", ignoreDuplicates: true })
+      .select("amount_kobo");
+    if (error) throw new Error("Payroll couldn't be completed. Please try again.");
+
+    const created = data?.length ?? 0;
+    const totalPaidKobo = (data ?? []).reduce((s, r) => s + Number(r.amount_kobo), 0);
+    return { created, skipped: preview.rows.length - created, totalPaidKobo };
+  },
+
+  async getLedger(filter?: DateFilter): Promise<LedgerDay[]> {
+    const client = sb();
+
+    let pq = client.from("payments").select("*").order("paid_on", { ascending: false });
+    if (filter?.from) pq = pq.gte("paid_on", filter.from);
+    if (filter?.to) pq = pq.lte("paid_on", filter.to);
+
+    let eq = client.from("expenses").select("*").order("spent_on", { ascending: false });
+    if (filter?.from) eq = eq.gte("spent_on", filter.from);
+    if (filter?.to) eq = eq.lte("spent_on", filter.to);
+
+    const [{ data: payments }, { data: expenses }] = await Promise.all([pq, eq]);
+
+    // Resolve student names for payment rows in one query.
+    const studentIds = [...new Set((payments ?? []).map((p) => p.student_id as string))];
+    const nameById = new Map<string, string>();
+    if (studentIds.length) {
+      const { data: students } = await client
+        .from("students")
+        .select("id,first_name,last_name")
+        .in("id", studentIds);
+      (students ?? []).forEach((s) =>
+        nameById.set(s.id as string, `${s.first_name} ${s.last_name}`),
+      );
+    }
+
+    const entries: LedgerEntry[] = [];
+    for (const p of payments ?? []) {
+      const pay = mapPayment(p);
+      entries.push({
+        id: pay.id,
+        date: pay.paidOn,
+        kind: "payment",
+        direction: "in",
+        title: nameById.get(pay.studentId) ?? "Student",
+        subtitle: `${pay.receiptNo} · ${pay.method}`,
+        amount: pay.amount,
+        method: pay.method,
+        reference: pay.studentId,
+      });
+    }
+    for (const row of expenses ?? []) {
+      const e = mapExpense(row);
+      entries.push({
+        id: e.id,
+        date: e.spentOn,
+        kind: "expense",
+        direction: "out",
+        title: e.payee,
+        subtitle: `${e.category} · ${e.method}`,
+        amount: e.amount,
+        method: e.method,
+        reference: e.id,
+      });
+    }
+    return groupLedger(entries);
+  },
+
+  // --- Fee structure & discounts --------------------------------------------
+
+  async listFeeItems(term: TermName): Promise<FeeItem[]> {
+    const client = sb();
+    const { session } = await getContext();
+    if (!session) return [];
+    const { data } = await client
+      .from("fee_items")
+      .select("*")
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .order("level");
+    return (data ?? []).map(mapFeeItem);
+  },
+
+  async saveFeeStructure(
+    level: string,
+    term: TermName,
+    items: FeeLineInput[],
+  ): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("School not set up.");
+
+    // Replace the level+term structure atomically enough for our needs: delete
+    // then insert. A student's existing bill lines are snapshots and untouched.
+    const { error: delErr } = await client
+      .from("fee_items")
+      .delete()
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .eq("level", level);
+    if (delErr) throw new Error("Couldn't update the fee structure.");
+
+    const rows = items
+      .filter((i) => i.name.trim() && i.amountKobo >= 0)
+      .map((i) => ({
+        school_id: school.id,
+        session_id: session.id,
+        term,
+        level,
+        name: i.name.trim(),
+        amount_kobo: i.amountKobo,
+        optional: i.optional ?? false,
+      }));
+    if (rows.length > 0) {
+      const { error } = await client.from("fee_items").insert(rows);
+      if (error) throw new Error("Couldn't save the fee structure.");
+    }
+  },
+
+  async generateBill(studentId: string, term: TermName): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("School not set up.");
+
+    const { data: existing } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .maybeSingle();
+    if (existing) return; // never overwrite a student's history
+
+    const { data: student } = await client
+      .from("students")
+      .select("class_id")
+      .eq("id", studentId)
+      .maybeSingle();
+    const { data: cls } = await client
+      .from("classes")
+      .select("level")
+      .eq("id", (student?.class_id as string) ?? "")
+      .maybeSingle();
+    const level = (cls?.level as string) ?? "";
+
+    const { data: feeItems } = await client
+      .from("fee_items")
+      .select("name, amount_kobo")
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .eq("level", level);
+    if (!feeItems || feeItems.length === 0) return; // nothing to bill yet
+
+    const { data: bill } = await client
+      .from("bills")
+      .insert({
+        school_id: school.id,
+        student_id: studentId,
+        session_id: session.id,
+        term,
+      })
+      .select("id")
+      .single();
+    if (bill) {
+      await client.from("bill_lines").insert(
+        feeItems.map((f) => ({
+          bill_id: bill.id,
+          name: f.name as string,
+          amount_kobo: Number(f.amount_kobo),
+        })),
+      );
+    }
+  },
+
+  async setStudentDiscount(
+    studentId: string,
+    term: TermName,
+    discountKobo: number,
+    reason?: string,
+  ): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("School not set up.");
+    if (discountKobo < 0) throw new Error("A discount can't be negative.");
+
+    const { data: bill } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .maybeSingle();
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+
+    const { error } = await client
+      .from("bills")
+      .update({ discount_kobo: discountKobo, discount_reason: reason ?? null })
+      .eq("id", bill.id);
+    if (error) throw new Error("Couldn't save the discount.");
   },
 };

@@ -77,7 +77,7 @@ export default function ImportStudentsPage() {
         <div className="space-y-4">
           <Card>
             <p className="text-sm font-semibold text-ink">
-              Step 1 — Get the form
+              Step 1: Get the form
             </p>
             <p className="mt-1 text-sm text-ink-muted">
               Download the template and share it, or collect the same columns in
@@ -104,7 +104,7 @@ export default function ImportStudentsPage() {
 
           <Card>
             <p className="text-sm font-semibold text-ink">
-              Step 2 — Upload the completed sheet
+              Step 2: Upload the completed sheet
             </p>
             <p className="mt-1 text-sm text-ink-muted">
               Accepts .csv or .xlsx. Nothing is added until you review and
@@ -211,7 +211,7 @@ function PreviewStage({
                 )}
               </p>
               <p className="truncate text-xs text-ink-muted">
-                {c.row.className || "—"} · {c.row.guardianName || "no guardian"}
+                {c.row.className || "-"} · {c.row.guardianName || "no guardian"}
               </p>
             </div>
             {c.problems.length === 0 ? (

@@ -36,8 +36,51 @@
   --slate: #54677f;
   --slate-tint: #e6e9ed;
 
+  /* Hero — navy pulling into ledger green so the balance card belongs to the
+     palette instead of a flat navy block. */
+  --hero-grad: linear-gradient(140deg, #1b2a3c 0%, #213f2f 66%, #2a5638 100%);
+  --hero-border: transparent;
+  --hero-glow: rgba(90, 175, 128, 0.45);
+
   --ring: #2f6f4e;
   --radius: 10px;
+}
+
+/*
+  Night ledger — dark theme. Gated to [data-theme="dark"] only (not
+  prefers-color-scheme) so the app stays light until a user opts in via the
+  theme toggle. Same tokens, re-grounded; accent brightened to stay legible.
+*/
+:root[data-theme="dark"] {
+  --background: #10161d;
+  --surface: #19212b;
+  --surface-raised: #212b36;
+  --surface-sunken: #141b23;
+  --ink: #eef2f6;
+  --ink-muted: #aab6c2;
+  --ink-faint: #7f8d9c;
+  --border: #2b3742;
+  --border-strong: #4b5a6c;
+
+  --primary: #43946b;
+  --primary-hover: #4fa77a;
+  --primary-tint: #1d3128;
+  --on-primary: #ffffff;
+
+  --success: #43946b;
+  --success-tint: #1d3128;
+  --warning: #c99a58;
+  --warning-tint: #322818;
+  --danger: #cc6555;
+  --danger-tint: #33201d;
+  --slate: #8b98a7;
+  --slate-tint: #232f3b;
+
+  --hero-grad: linear-gradient(140deg, #1f2c3b 0%, #234636 68%, #2d6044 100%);
+  --hero-border: #2f3d4d;
+  --hero-glow: rgba(90, 175, 128, 0.4);
+
+  --ring: #43946b;
 }
 
 @theme inline {
@@ -65,9 +108,12 @@
   --color-slate: var(--slate);
   --color-slate-tint: var(--slate-tint);
 
-  --font-display: var(--font-manrope);
+  --font-display: var(--font-bricolage);
   --font-sans: var(--font-inter);
-  --font-mono: var(--font-plex-mono);
+  /* Money retired IBM Plex Mono — figures now use the neutral sans with
+     tabular-nums (open, clean zeros). font-mono kept as an alias so any
+     existing utility usage stays on the sans. */
+  --font-mono: var(--font-inter);
 
   --radius-lg: var(--radius);
 }
@@ -90,16 +136,18 @@ body {
 
 /* Display face for titles and figures that need weight */
 h1, h2, h3, .font-display {
-  font-family: var(--font-manrope), system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: var(--font-bricolage), system-ui, sans-serif;
+  letter-spacing: -0.015em;
 }
 
-/* Money and dates — fixed-width so columns line up and can't be misread */
+/* Money and dates — neutral sans with tabular figures so columns line up and
+   can't be misread. Two decimals is enforced in the formatter, not here. */
 .tabular,
 .money {
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  letter-spacing: -0.01em;
 }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
@@ -143,4 +191,13 @@ h1, h2, h3, .font-display {
 .receipt::after {
   right: -1px;
   transform: scaleX(-1);
+}
+
+/* Print receipt — hide app chrome, show only the printable area */
+@media print {
+  body { background: white !important; }
+  nav, aside, header, .no-print, button:not(.print-include) { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .print-only { display: block !important; }
+  .receipt::before, .receipt::after { display: none; }
 }
