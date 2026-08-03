@@ -148,11 +148,31 @@ export default function StudentsPage() {
       {loading && !data ? (
         <LoadingBlock label="Loading student records…" />
       ) : !data || data.length === 0 ? (
-        <EmptyState
-          icon={<StudentsIcon width={32} height={32} />}
-          title="No students yet"
-          description="Import a class from a spreadsheet, or add students one at a time."
-        />
+        <div className="flex flex-col items-center gap-4">
+          <EmptyState
+            icon={<StudentsIcon width={32} height={32} />}
+            title="No students yet"
+            description="Import a class from a spreadsheet, or add students one at a time."
+          />
+          {can(role, "manage_students") && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {can(role, "import_students") && (
+                <Link href="/students/import" className="contents">
+                  <Button variant="secondary">
+                    <UploadIcon width={18} height={18} />
+                    Import
+                  </Button>
+                </Link>
+              )}
+              <Link href="/students/new" className="contents">
+                <Button>
+                  <PlusIcon width={18} height={18} />
+                  Add student
+                </Button>
+              </Link>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
           <div className="overflow-x-auto">
@@ -243,6 +263,17 @@ export default function StudentsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {can(role, "manage_students") && (
+        <Link
+          href="/students/new"
+          aria-label="Add student"
+          className="fixed bottom-20 right-4 z-30 inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-on-primary shadow-lg transition hover:bg-primary-hover md:bottom-6 md:right-6"
+        >
+          <PlusIcon width={18} height={18} />
+          Add student
+        </Link>
       )}
     </div>
   );

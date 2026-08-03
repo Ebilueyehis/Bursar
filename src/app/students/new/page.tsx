@@ -32,6 +32,8 @@ export default function NewStudentPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // A student cannot be born in the future: cap the date picker at today.
+  const today = new Date().toISOString().slice(0, 10);
 
   const selectedClass = useMemo(
     () => classes?.find((c) => c.id === form.classId),
@@ -141,13 +143,13 @@ export default function NewStudentPage() {
         <div className="grid grid-cols-2 gap-3">
           <Field label="Gender">
             <Select value={form.gender} onChange={set("gender")}>
-              <option value="">Select a class</option>
+              <option value="">Select a gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
             </Select>
           </Field>
           <Field label="Date of birth">
-            <Input type="date" value={form.dateOfBirth} onChange={set("dateOfBirth")} />
+            <Input type="date" max={today} value={form.dateOfBirth} onChange={set("dateOfBirth")} />
           </Field>
         </div>
 
