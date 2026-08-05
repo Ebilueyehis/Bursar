@@ -16,6 +16,7 @@ import type {
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
+import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 
 /**
  * The single interface the UI uses to read and write data. Today it is backed
@@ -97,12 +98,36 @@ export interface Repository {
     discountKobo: number,
     reason?: string,
   ): Promise<void>;
+
+  /** Replace fee structure for every class level present in the uploaded rows. */
+  importFeeStructure(
+    term: TermName,
+    rows: FeeTemplateRow[],
+  ): Promise<FeeStructureImportResult>;
+
+  /** Replace a student's bill snapshot lines for the term. Discount is untouched. */
+  updateBillLines(
+    studentId: string,
+    term: TermName,
+    lines: BillLineInput[],
+  ): Promise<void>;
 }
 
 export interface FeeLineInput {
   name: string;
   amountKobo: number;
   optional?: boolean;
+}
+
+export interface BillLineInput {
+  name: string;
+  amountKobo: number;
+}
+
+export interface FeeStructureImportResult {
+  levelsUpdated: number;
+  itemsWritten: number;
+  skipped: number;
 }
 
 export interface DateFilter {
@@ -157,6 +182,10 @@ export interface CreateStudentInput {
   religion?: string;
   classId: string;
   termFeeKobo: number;
+  /** Chosen + edited bill lines from the picker. If omitted, falls back to termFeeKobo. */
+  billLines?: BillLineInput[];
+  discountKobo?: number;
+  discountReason?: string;
   guardianName: string;
   guardianPhone: string;
   guardianRelationship?: string;
