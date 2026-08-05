@@ -27,11 +27,13 @@ import {
   USERS,
 } from "@/lib/data/seed";
 import type {
+  BillLineInput,
   CreateExpenseInput,
   CreateStaffInput,
   DashboardStats,
   DateFilter,
   FeeLineInput,
+  FeeStructureImportResult,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
@@ -40,6 +42,7 @@ import type {
   RecordPaymentInput,
   Repository,
 } from "@/lib/data/repository";
+import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 
 /**
  * In-memory implementation of the Repository. Data lives in module arrays that
@@ -239,12 +242,17 @@ export const mockRepository: Repository = {
     };
     STUDENTS.push(student);
 
-    // Prefer the class level's fee structure; fall back to the typed term fee.
+    // Bill lines: prefer explicitly chosen picker lines, then the class level's
+    // fee structure, then the typed term fee.
     const structure = FEE_ITEMS.filter(
       (f) => f.level === cls.level && f.term === SCHOOL.currentTerm,
     );
     let lines: { name: string; amount: number }[] = [];
-    if (structure.length > 0) {
+    if (input.billLines && input.billLines.length > 0) {
+      lines = input.billLines
+        .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+        .map((l) => ({ name: l.name.trim(), amount: l.amountKobo }));
+    } else if (structure.length > 0) {
       lines = structure.map((f) => ({ name: f.name, amount: f.amount }));
     } else if (input.termFeeKobo > 0) {
       lines = [{ name: "Term fee", amount: input.termFeeKobo }];
@@ -257,7 +265,8 @@ export const mockRepository: Repository = {
         sessionId: SESSION.id,
         term: SCHOOL.currentTerm,
         lines,
-        discount: 0,
+        discount: Math.max(0, input.discountKobo ?? 0),
+        discountReason: input.discountReason,
         createdOn: new Date().toISOString().slice(0, 10),
       });
     }
@@ -535,6 +544,33 @@ export const mockRepository: Repository = {
       });
   },
 
+  async importFeeStructure(
+    term: TermName,
+    rows: FeeTemplateRow[],
+  ): Promise<FeeStructureImportResult> {
+    await tick();
+    const byLevel = new Map<string, FeeTemplateRow[]>();
+    for (const r of rows) {
+      const list = byLevel.get(r.level) ?? [];
+      list.push(r);
+      byLevel.set(r.level, list);
+    }
+    let itemsWritten = 0;
+    for (const [level, items] of byLevel) {
+      await this.saveFeeStructure(
+        level,
+        term,
+        items.map((i) => ({
+          name: i.name,
+          amountKobo: i.amountKobo,
+          optional: i.optional,
+        })),
+      );
+      itemsWritten += items.length;
+    }
+    return { levelsUpdated: byLevel.size, itemsWritten, skipped: 0 };
+  },
+
   async generateBill(studentId: string, term: TermName): Promise<void> {
     await tick();
     if (BILLS.some((b) => b.studentId === studentId && b.term === term)) return;
@@ -568,5 +604,25 @@ export const mockRepository: Repository = {
     if (!bill) throw new Error("This student has no bill for the term yet.");
     bill.discount = Math.max(0, discountKobo);
     bill.discountReason = reason;
+  },
+
+  async updateBillLines(
+    studentId: string,
+    term: TermName,
+    lines: BillLineInput[],
+  ): Promise<void> {
+    await tick();
+    const bill = BILLS.find((b) => b.studentId === studentId && b.term === term);
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+    const clean = lines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+    const newTotal = clean.reduce((s, l) => s + l.amount, 0) - bill.discount;
+    const paid = paymentsFor(bill.id).reduce((s, p) => s + p.amount, 0);
+    if (newTotal < paid) {
+      throw new Error("New bill total is less than what has already been paid.");
+    }
+    bill.lines = clean;
   },
 };
