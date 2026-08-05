@@ -2,14 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { repository } from "@/lib/data/repository";
-import { formatNaira } from "@/lib/money";
-import { parseNairaToKobo } from "@/lib/money";
-import { Button, Field, Input, Money, NairaInput, Select, LoadingBlock } from "@/components/ui";
+import { Button, Field, Input, Select, LoadingBlock } from "@/components/ui";
+import { BillPicker, draftFromItems } from "@/components/BillPicker";
+import {
+  type BillDraft,
+  checkedLines,
+  validateBillDraft,
+} from "@/lib/fees/billMath";
 import { ArrowLeftIcon } from "@/components/icons";
+
+const EMPTY_DRAFT: BillDraft = { lines: [], discountKobo: 0, discountReason: "" };
+const BLANK_LINE_DRAFT: BillDraft = {
+  lines: [{ name: "", amountKobo: 0, checked: true }],
+  discountKobo: 0,
+  discountReason: "",
+};
 
 export default function NewStudentPage() {
   const router = useRouter();
@@ -25,11 +36,12 @@ export default function NewStudentPage() {
     dateOfBirth: "",
     religion: "",
     classId: "",
-    termFee: "",
     guardianName: "",
     guardianPhone: "",
     guardianRelationship: "",
   });
+  const [draft, setDraft] = useState<BillDraft>(EMPTY_DRAFT);
+  const [seededClassId, setSeededClassId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // A student cannot be born in the future: cap the date picker at today.
@@ -39,18 +51,26 @@ export default function NewStudentPage() {
     () => classes?.find((c) => c.id === form.classId),
     [classes, form.classId],
   );
-  const levelFeeTotal = useMemo(() => {
-    if (!selectedClass || !feeItems) return 0;
+  // The class level's fee items, shaped for the picker.
+  const levelItems = useMemo(() => {
+    if (!selectedClass || !feeItems) return [];
     return feeItems
       .filter((f) => f.level === selectedClass.level)
-      .reduce((s, f) => s + f.amount, 0);
+      .map((f) => ({ name: f.name, amountKobo: f.amount, optional: f.optional }));
   }, [selectedClass, feeItems]);
 
-  useEffect(() => {
-    if (levelFeeTotal > 0) {
-      setForm((f) => ({ ...f, termFee: String(levelFeeTotal / 100) }));
-    }
-  }, [levelFeeTotal]);
+  // Re-seed the bill when the chosen class changes (set-state-during-render:
+  // guarded so it converges, and avoids a class change effect).
+  if (form.classId !== seededClassId && feeItems) {
+    setSeededClassId(form.classId);
+    setDraft(
+      !form.classId
+        ? EMPTY_DRAFT
+        : levelItems.length > 0
+          ? draftFromItems(levelItems)
+          : BLANK_LINE_DRAFT,
+    );
+  }
 
   const set = (k: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -63,8 +83,8 @@ export default function NewStudentPage() {
     if (!form.classId) return setError("Choose a class.");
     if (!form.guardianName.trim() || !form.guardianPhone.trim())
       return setError("Enter the guardian's name and phone number.");
-    const termFeeKobo = form.termFee ? parseNairaToKobo(form.termFee) : 0;
-    if (termFeeKobo === null) return setError("Enter a valid term fee, or leave it blank.");
+    const billError = validateBillDraft(draft);
+    if (billError) return setError(billError);
 
     setSaving(true);
     try {
@@ -76,7 +96,10 @@ export default function NewStudentPage() {
         dateOfBirth: form.dateOfBirth || undefined,
         religion: form.religion.trim() || undefined,
         classId: form.classId,
-        termFeeKobo: termFeeKobo ?? 0,
+        termFeeKobo: 0,
+        billLines: checkedLines(draft),
+        discountKobo: draft.discountKobo,
+        discountReason: draft.discountReason.trim() || undefined,
         guardianName: form.guardianName.trim(),
         guardianPhone: form.guardianPhone.trim(),
         guardianRelationship: form.guardianRelationship.trim() || undefined,
@@ -104,8 +127,8 @@ export default function NewStudentPage() {
       </p>
       <h1 className="mb-1 font-display text-2xl font-extrabold text-ink">Add a student</h1>
       <p className="mb-5 text-sm text-ink-muted">
-        Recorded by {actorName}. If this class has a fee structure, it&apos;s
-        applied automatically. Set it under Fees.
+        Recorded by {actorName}. Pick a class to load its fees, then tick the
+        items that apply and adjust amounts for this student.
       </p>
 
       <div className="space-y-4">
@@ -129,16 +152,18 @@ export default function NewStudentPage() {
           </Select>
         </Field>
 
-        <Field
-          label="Term fee (₦)"
-          hint={
-            levelFeeTotal > 0
-              ? `Auto-filled from ${selectedClass!.level} fee structure (${formatNaira(levelFeeTotal, { kobo_decimals: false })}). You can adjust if needed.`
-              : "No fee structure for this class. Enter the term fee manually."
-          }
-        >
-          <NairaInput value={form.termFee} onValueChange={(v) => setForm((f) => ({ ...f, termFee: v }))} placeholder="e.g. 45,000" />
-        </Field>
+        {form.classId && (
+          <Field
+            label="Bill"
+            hint={
+              levelItems.length > 0
+                ? `Loaded from the ${selectedClass?.level} fee structure. Untick anything that does not apply.`
+                : "This class has no fee structure yet. Enter the bill items manually."
+            }
+          >
+            <BillPicker value={draft} onChange={setDraft} />
+          </Field>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Gender">
