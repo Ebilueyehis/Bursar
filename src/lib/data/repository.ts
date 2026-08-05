@@ -202,6 +202,8 @@ export interface DashboardStats {
   fullyPaidCount: number;
   partialCount: number;
   unpaidCount: number;
+  /** Number of payments (receipts) recorded for the term. */
+  receiptCount: number;
 }
 
 export interface RecordPaymentInput {

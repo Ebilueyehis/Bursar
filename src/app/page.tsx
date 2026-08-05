@@ -1,169 +1,375 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { repository } from "@/lib/data/repository";
 import { can, termLabel } from "@/lib/domain/constants";
-import { Card, LoadingBlock, Money, cn } from "@/components/ui";
+import { classLevel } from "@/lib/classes";
+import { exportToXlsx } from "@/lib/export";
+import { formatNaira } from "@/lib/money";
+import type { StudentAccount } from "@/lib/domain/types";
+import { Card, LoadingBlock, Select, cn } from "@/components/ui";
+import { Avatar } from "@/app/debtors/page";
 import {
+  ArrowDownIcon,
   ChevronRightIcon,
-  DebtorsIcon,
+  FeesIcon,
+  MoneyIcon,
   PlusIcon,
-  SendIcon,
-  UploadIcon,
+  ReportIcon,
+  StudentsIcon,
 } from "@/components/icons";
 
+type LevelFilter = "all" | "Primary" | "Secondary";
+type SortKey = "oldest" | "recent" | "high" | "low";
+
 export default function DashboardPage() {
-  const { term, role, actorName } = useViewer();
+  const { term, role } = useViewer();
   const { data: stats, loading } = useAsync(
     () => repository.getDashboardStats(term),
     [term],
   );
+  const { data: debtors } = useAsync(() => repository.listDebtors(term), [term]);
 
-  const firstName = actorName.split(" ").slice(-1)[0];
+  if (loading && !stats) {
+    return <LoadingBlock label="Loading this term's figures…" />;
+  }
+  if (!stats) return null;
+
+  const pct =
+    stats.totalBilled > 0
+      ? Math.min(100, (stats.totalCollected / stats.totalBilled) * 100)
+      : 100;
 
   return (
-    <div>
-      <div className="mb-5">
-        <p className="text-sm text-ink-muted">Welcome back, {firstName}.</p>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Dashboard</h1>
+    <div className="space-y-4">
+      {/* Hero + reconciliation */}
+      <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
+        <Link
+          href="/debtors"
+          className="group relative overflow-hidden rounded-xl border border-ink bg-ink p-6 text-white"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-white/60">
+              Outstanding balance · this {termLabel(term).toLowerCase()}
+            </p>
+            <ChevronRightIcon
+              width={20}
+              height={20}
+              className="opacity-70 transition group-hover:translate-x-0.5"
+            />
+          </div>
+          <p className="money mt-2 text-4xl font-extrabold tracking-tight">
+            {formatNaira(stats.totalOutstanding)}
+          </p>
+          <div className="mt-3 flex items-center gap-2 text-sm text-white/70">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                stats.debtorCount > 0 ? "bg-warning" : "bg-success",
+              )}
+            />
+            {stats.debtorCount === 0
+              ? "Every balance is cleared."
+              : `${stats.debtorCount} ${stats.debtorCount === 1 ? "student" : "students"} to follow up`}
+          </div>
+        </Link>
+
+        <Card className="flex flex-col justify-center">
+          <div className="flex items-baseline justify-between">
+            <span className="money text-2xl font-extrabold text-primary">
+              {pct.toFixed(1)}%
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+              Accounted for
+            </span>
+          </div>
+          <div className="my-3 h-2.5 overflow-hidden rounded-full bg-surface-sunken">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-700"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-ink-muted">
+            <span>
+              Received{" "}
+              <b className="money text-ink">{formatNaira(stats.totalCollected)}</b>
+            </span>
+            <span>
+              Expected{" "}
+              <b className="money text-ink">{formatNaira(stats.totalBilled)}</b>
+            </span>
+          </div>
+        </Card>
       </div>
 
-      {loading && !stats ? (
-        <LoadingBlock label="Loading this term's figures…" />
-      ) : stats ? (
-        <div className="space-y-4">
-          {/* The priority: who owes, and how much. */}
-          <Link href="/debtors" className="block">
-            <div className="rounded-lg border border-ink bg-ink p-5 text-white">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-white/70">
-                  Outstanding this {termLabel(term).toLowerCase()}
-                </p>
-                <ChevronRightIcon width={20} height={20} className="opacity-80" />
-              </div>
-              <p className="money mt-1 text-4xl font-bold">
-                {formatBig(stats.totalOutstanding)}
-              </p>
-              <p className="mt-1 text-sm text-white/70">
-                {stats.debtorCount === 0
-                  ? "Every balance is cleared. Everything is accounted for."
-                  : `${stats.debtorCount} ${
-                      stats.debtorCount === 1 ? "student" : "students"
-                    } owing, oldest first`}
-              </p>
-            </div>
-          </Link>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <StatCard
+          tone="success"
+          icon={<ArrowDownIcon width={15} height={15} />}
+          label="Received this term"
+          value={formatNaira(stats.totalCollected)}
+          sub={`${pct.toFixed(1)}% of expected`}
+        />
+        <StatCard
+          tone="slate"
+          icon={<MoneyIcon width={15} height={15} />}
+          label="Expected this term"
+          value={formatNaira(stats.totalBilled)}
+          sub={`${stats.studentCount} ${stats.studentCount === 1 ? "student" : "students"} enrolled`}
+        />
+        <StatCard
+          tone="slate"
+          icon={<StudentsIcon width={15} height={15} />}
+          label="Student records"
+          value={String(stats.studentCount)}
+          sub="active this session"
+        />
+        <StatCard
+          tone="warning"
+          icon={<ReportIcon width={15} height={15} />}
+          label="Receipts issued"
+          value={String(stats.receiptCount)}
+          sub="every one accounted for"
+        />
+      </div>
 
-          {/* Collected vs students */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card>
-              <p className="text-sm text-ink-muted">Collected</p>
-              <Money
-                kobo={stats.totalCollected}
-                tone="success"
-                className="mt-1 block text-xl"
-              />
-              <p className="mt-1 text-xs text-ink-faint">
-                of {formatBig(stats.totalBilled)} billed
-              </p>
-            </Card>
-            <Card>
-              <p className="text-sm text-ink-muted">Students</p>
-              <p className="tabular mt-1 text-xl font-semibold text-ink">
-                {stats.studentCount}
-              </p>
-              <p className="mt-1 text-xs text-ink-faint">active this session</p>
-            </Card>
-          </div>
+      {/* Outstanding payments */}
+      <OutstandingPayments debtors={debtors ?? []} />
 
-          {/* Payment status split */}
-          <Card>
-            <p className="mb-3 text-sm font-semibold text-ink">Fees status</p>
-            <StatusBar
-              paid={stats.fullyPaidCount}
-              partial={stats.partialCount}
-              unpaid={stats.unpaidCount}
-            />
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              <Legend tone="paid" label="Paid" value={stats.fullyPaidCount} />
-              <Legend tone="partial" label="Part-paid" value={stats.partialCount} />
-              <Legend tone="unpaid" label="Not paid" value={stats.unpaidCount} />
-            </div>
-          </Card>
-
-          {/* Quick actions, role-aware */}
-          <div>
-            <p className="mb-2 text-sm font-semibold text-ink">Quick actions</p>
-            <div className="grid grid-cols-2 gap-3">
-              {can(role, "record_payment") && (
-                <QuickAction href="/pay" label="Record payment" icon={<PlusIcon width={20} height={20} />} />
-              )}
-              <QuickAction href="/debtors" label="See who's owing" icon={<DebtorsIcon width={20} height={20} />} />
-              {can(role, "import_students") && (
-                <QuickAction href="/students/import" label="Import students" icon={<UploadIcon width={20} height={20} />} />
-              )}
-              {can(role, "send_reminders") && (
-                <QuickAction href="/debtors" label="Send reminders" icon={<SendIcon width={20} height={20} />} />
-              )}
-            </div>
-          </div>
+      {/* Quick actions */}
+      <div>
+        <p className="mb-2 mt-6 text-sm font-semibold text-ink">Quick actions</p>
+        <div className="flex flex-wrap gap-3">
+          {can(role, "record_payment") && (
+            <QuickAction href="/pay" primary label="Record a payment" icon={<PlusIcon width={18} height={18} />} />
+          )}
+          {can(role, "manage_students") && (
+            <QuickAction href="/students/new" label="Add a student" icon={<StudentsIcon width={18} height={18} />} />
+          )}
+          {can(role, "edit_fees") && (
+            <QuickAction href="/profile" label="Set class fees" icon={<FeesIcon width={18} height={18} />} />
+          )}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
 
-function formatBig(kobo: number): string {
-  const naira = kobo / 100;
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 0,
-  }).format(naira);
-}
+// --- Stat card ---------------------------------------------------------------
 
-function StatusBar({
-  paid,
-  partial,
-  unpaid,
-}: {
-  paid: number;
-  partial: number;
-  unpaid: number;
-}) {
-  const total = Math.max(1, paid + partial + unpaid);
-  const seg = (n: number) => `${(n / total) * 100}%`;
-  return (
-    <div className="flex h-3 overflow-hidden rounded-full bg-surface-sunken">
-      <div className="bg-success" style={{ width: seg(paid) }} />
-      <div className="bg-warning" style={{ width: seg(partial) }} />
-      <div className="bg-danger" style={{ width: seg(unpaid) }} />
-    </div>
-  );
-}
+const CHIP_TONES = {
+  success: "bg-success-tint text-success",
+  slate: "bg-slate-tint text-slate",
+  warning: "bg-warning-tint text-warning",
+} as const;
 
-function Legend({
+function StatCard({
   tone,
+  icon,
   label,
   value,
+  sub,
 }: {
-  tone: "paid" | "partial" | "unpaid";
+  tone: keyof typeof CHIP_TONES;
+  icon: React.ReactNode;
   label: string;
-  value: number;
+  value: string;
+  sub: string;
 }) {
-  const dot = { paid: "bg-success", partial: "bg-warning", unpaid: "bg-danger" }[
-    tone
-  ];
+  return (
+    <Card className="flex flex-col gap-1.5">
+      <p className="flex items-center gap-2 text-xs font-medium text-ink-muted">
+        <span className={cn("grid size-6 place-items-center rounded-md", CHIP_TONES[tone])}>
+          {icon}
+        </span>
+        {label}
+      </p>
+      <p className="money text-xl font-bold text-ink">{value}</p>
+      <p className="text-xs text-ink-faint">{sub}</p>
+    </Card>
+  );
+}
+
+// --- Outstanding payments table ---------------------------------------------
+
+function OutstandingPayments({ debtors }: { debtors: StudentAccount[] }) {
+  const [level, setLevel] = useState<LevelFilter>("all");
+  const [sort, setSort] = useState<SortKey>("oldest");
+
+  const rows = useMemo(() => {
+    const filtered = debtors.filter(
+      (a) => level === "all" || classLevel(a.className) === level,
+    );
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "recent":
+          return b.bill.createdOn.localeCompare(a.bill.createdOn);
+        case "high":
+          return b.outstanding - a.outstanding;
+        case "low":
+          return a.outstanding - b.outstanding;
+        default:
+          return a.bill.createdOn.localeCompare(b.bill.createdOn);
+      }
+    });
+    return sorted;
+  }, [debtors, level, sort]);
+
+  function onExport() {
+    exportToXlsx(
+      "Outstanding payments",
+      ["Class", "Student", "Guardian", "Weeks owed", "Balance"],
+      rows.map((a) => [
+        a.className,
+        `${a.student.firstName} ${a.student.lastName}`,
+        a.guardian.fullName,
+        weeksOwed(a.bill.createdOn),
+        a.outstanding / 100,
+      ]),
+    );
+  }
+
   return (
     <div>
-      <div className="flex items-center justify-center gap-1.5">
-        <span className={cn("size-2 rounded-full", dot)} />
-        <span className="tabular text-lg font-semibold text-ink">{value}</span>
+      <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-bold text-ink">Outstanding payments</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={level}
+            onChange={(e) => setLevel(e.target.value as LevelFilter)}
+            className="w-auto py-2 text-sm"
+          >
+            <option value="all">All levels</option>
+            <option value="Secondary">Secondary</option>
+            <option value="Primary">Primary</option>
+          </Select>
+          <Select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="w-auto py-2 text-sm"
+          >
+            <option value="oldest">Oldest first</option>
+            <option value="recent">Most recent first</option>
+            <option value="high">Highest balance</option>
+            <option value="low">Lowest balance</option>
+          </Select>
+          <button
+            type="button"
+            onClick={onExport}
+            disabled={rows.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-ink transition hover:border-primary disabled:opacity-40"
+          >
+            <ExportIcon />
+            Export to Excel
+          </button>
+        </div>
       </div>
-      <p className="text-xs text-ink-muted">{label}</p>
+
+      <Card className="overflow-hidden p-0">
+        {rows.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-ink-muted">
+            No outstanding balances for this filter.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-left">
+              <thead>
+                <tr className="border-b-2 border-border-strong">
+                  <Th>Class</Th>
+                  <Th>Student</Th>
+                  <Th>Guardian</Th>
+                  <Th>Owed for</Th>
+                  <Th>Balance</Th>
+                  <Th>Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((a) => {
+                  const weeks = weeksOwed(a.bill.createdOn);
+                  return (
+                    <tr
+                      key={a.student.id}
+                      className="border-b border-border last:border-0 hover:bg-surface-raised"
+                    >
+                      <td className="px-4 py-2.5 text-sm text-ink">{a.className}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar first={a.student.firstName} last={a.student.lastName} />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">
+                              {a.student.firstName} {a.student.lastName}
+                            </p>
+                            <p className="truncate text-xs text-ink-faint">
+                              {a.student.admissionNo}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-ink">
+                        {a.guardian.fullName}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <WeeksPill weeks={weeks} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="money text-sm font-semibold text-danger">
+                          {formatNaira(a.outstanding)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <Link
+                          href={`/students/${a.student.id}`}
+                          className="text-sm font-semibold text-primary hover:underline"
+                        >
+                          Open record
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
+  );
+}
+
+/** Whole weeks since the bill was raised. Minimum of 1 once a balance exists. */
+function weeksOwed(createdOn: string): number {
+  const ms = Date.now() - new Date(createdOn).getTime();
+  return Math.max(1, Math.floor(ms / (7 * 24 * 60 * 60 * 1000)));
+}
+
+function WeeksPill({ weeks }: { weeks: number }) {
+  const tone =
+    weeks >= 6
+      ? "bg-danger-tint text-danger"
+      : weeks >= 3
+        ? "bg-warning-tint text-warning"
+        : "bg-slate-tint text-slate";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+        tone,
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current" />
+      {weeks} {weeks === 1 ? "week" : "weeks"}
+    </span>
+  );
+}
+
+function Th({ children }: { children: React.ReactNode }) {
+  return (
+    <th className="px-4 py-3 text-xs font-bold text-ink-faint">{children}</th>
   );
 }
 
@@ -171,18 +377,43 @@ function QuickAction({
   href,
   label,
   icon,
+  primary,
 }: {
   href: string;
   label: string;
   icon: React.ReactNode;
+  primary?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3.5 text-sm font-semibold text-ink transition hover:bg-surface-sunken"
+      className={cn(
+        "inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition",
+        primary
+          ? "bg-primary text-on-primary hover:bg-primary-hover"
+          : "border border-border bg-surface-raised text-ink hover:border-primary",
+      )}
     >
-      <span className="text-primary">{icon}</span>
+      {icon}
       {label}
     </Link>
+  );
+}
+
+function ExportIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="text-success"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M8.5 8.5l7 7M15.5 8.5l-7 7" />
+    </svg>
   );
 }

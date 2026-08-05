@@ -298,6 +298,7 @@ export const supabaseRepository: Repository = {
       fullyPaidCount: accounts.filter((a) => a.status === "paid").length,
       partialCount: accounts.filter((a) => a.status === "partial").length,
       unpaidCount: accounts.filter((a) => a.status === "unpaid").length,
+      receiptCount: accounts.reduce((s, a) => s + a.payments.length, 0),
     };
   },
 
