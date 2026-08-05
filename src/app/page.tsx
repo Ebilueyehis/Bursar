@@ -49,7 +49,8 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
         <Link
           href="/debtors"
-          className="group relative overflow-hidden rounded-xl border border-ink bg-ink p-6 text-white"
+          className="group relative overflow-hidden rounded-xl border p-6 text-white"
+          style={{ background: "var(--hero-grad)", borderColor: "var(--hero-border)" }}
         >
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-white/60">

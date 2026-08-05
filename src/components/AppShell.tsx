@@ -105,7 +105,7 @@ function Sidebar() {
   const { school, role, actorName } = useViewer();
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col bg-ink px-3 py-5 text-[#EDEFF2] md:flex">
+    <aside className="hidden w-60 shrink-0 flex-col bg-[#16212e] px-3 py-5 text-[#EDEFF2] md:flex">
       <div className="flex items-center gap-2.5 px-2">
         <Logo dark />
         <div className="leading-tight">

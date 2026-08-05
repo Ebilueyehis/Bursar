@@ -28,7 +28,7 @@ export default async function OnboardingPage() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
       <div className="mb-8 flex items-center gap-2.5">
-        <span className="flex size-9 items-center justify-center rounded-lg bg-ink text-white">
+        <span className="flex size-9 items-center justify-center rounded-lg bg-[#16212e] text-white">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M6 4h9a4 4 0 0 1 0 8H6zM6 12h10a4 4 0 0 1 0 8H6zM6 4v16"
