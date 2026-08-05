@@ -66,3 +66,8 @@ export function parseNairaToKobo(text: string): Kobo | null {
   if (!isFinite(naira) || naira < 0) return null;
   return nairaToKobo(naira);
 }
+
+/** Kobo to a plain editable Naira string (no symbol), e.g. 9000000 -> "90000". */
+export function koboToNairaString(kobo: number): string {
+  return kobo === 0 ? "" : String(kobo / 100);
+}
