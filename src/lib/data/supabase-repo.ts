@@ -16,12 +16,14 @@ import type {
   UserProfile,
 } from "@/lib/domain/types";
 import type {
+  BillLineInput,
   CreateExpenseInput,
   CreateStaffInput,
   CreateStudentInput,
   DashboardStats,
   DateFilter,
   FeeLineInput,
+  FeeStructureImportResult,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
@@ -30,6 +32,7 @@ import type {
   RecordPaymentInput,
   Repository,
 } from "@/lib/data/repository";
+import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { groupLedger } from "@/lib/data/ledger";
 
 /**
@@ -441,7 +444,11 @@ export const supabaseRepository: Repository = {
       .eq("level", level);
 
     let lines: { name: string; amount_kobo: number }[] = [];
-    if (feeItems && feeItems.length > 0) {
+    if (input.billLines && input.billLines.length > 0) {
+      lines = input.billLines
+        .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+        .map((l) => ({ name: l.name.trim(), amount_kobo: l.amountKobo }));
+    } else if (feeItems && feeItems.length > 0) {
       lines = feeItems.map((f) => ({
         name: f.name as string,
         amount_kobo: Number(f.amount_kobo),
@@ -458,6 +465,8 @@ export const supabaseRepository: Repository = {
           student_id: student.id,
           session_id: session.id,
           term: school.currentTerm,
+          discount_kobo: Math.max(0, input.discountKobo ?? 0),
+          discount_reason: input.discountReason ?? null,
         })
         .select("id")
         .single();
@@ -895,5 +904,81 @@ export const supabaseRepository: Repository = {
       .update({ discount_kobo: discountKobo, discount_reason: reason ?? null })
       .eq("id", bill.id);
     if (error) throw new Error("Couldn't save the discount.");
+  },
+
+  async importFeeStructure(
+    term: TermName,
+    rows: FeeTemplateRow[],
+  ): Promise<FeeStructureImportResult> {
+    const byLevel = new Map<string, FeeTemplateRow[]>();
+    for (const r of rows) {
+      const list = byLevel.get(r.level) ?? [];
+      list.push(r);
+      byLevel.set(r.level, list);
+    }
+    let itemsWritten = 0;
+    for (const [level, items] of byLevel) {
+      await this.saveFeeStructure(
+        level,
+        term,
+        items.map((i) => ({
+          name: i.name,
+          amountKobo: i.amountKobo,
+          optional: i.optional,
+        })),
+      );
+      itemsWritten += items.length;
+    }
+    return { levelsUpdated: byLevel.size, itemsWritten, skipped: 0 };
+  },
+
+  async updateBillLines(
+    studentId: string,
+    term: TermName,
+    lines: BillLineInput[],
+  ): Promise<void> {
+    const client = sb();
+    const { session } = await getContext();
+    if (!session) throw new Error("School not set up.");
+
+    const { data: bill } = await client
+      .from("bills")
+      .select("id, discount_kobo")
+      .eq("student_id", studentId)
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .maybeSingle();
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+
+    const clean = lines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount_kobo: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+
+    const { data: payments } = await client
+      .from("payments")
+      .select("amount_kobo")
+      .eq("bill_id", bill.id);
+    const paid = (payments ?? []).reduce(
+      (s, p) => s + Number(p.amount_kobo),
+      0,
+    );
+    const newTotal =
+      clean.reduce((s, l) => s + l.amount_kobo, 0) -
+      Number(bill.discount_kobo ?? 0);
+    if (newTotal < paid) {
+      throw new Error("New bill total is less than what has already been paid.");
+    }
+
+    // Snapshot lines are replaced wholesale: clear then insert.
+    const { error: delErr } = await client
+      .from("bill_lines")
+      .delete()
+      .eq("bill_id", bill.id);
+    if (delErr) throw new Error("Couldn't update the bill.");
+    const { error: insErr } = await client
+      .from("bill_lines")
+      .insert(clean.map((l) => ({ bill_id: bill.id, ...l })));
+    if (insErr) throw new Error("Couldn't save the bill items.");
   },
 };
