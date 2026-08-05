@@ -9,6 +9,11 @@ import type { CreateStaffInput } from "@/lib/data/repository";
 import { ROLE_LABELS, can, termLabel } from "@/lib/domain/constants";
 import { classRank } from "@/lib/classes";
 import { exportToXlsx, readSheetRows } from "@/lib/export";
+import {
+  FEE_TEMPLATE_HEADERS,
+  buildFeeTemplateRows,
+  parseFeeTemplate,
+} from "@/lib/fees/feeTemplate";
 import { formatNaira, parseNairaToKobo } from "@/lib/money";
 import type { FeeItem, Staff, StaffType } from "@/lib/domain/types";
 import {
@@ -442,9 +447,70 @@ function ManualStaffCard({ onAdded }: { onAdded: () => void }) {
 
 function FeesPanel() {
   const { role, term } = useViewer();
-  const { data, loading } = useAsync(() => repository.listFeeItems(term), [term]);
+  const { data, loading, reload } = useAsync(
+    () => repository.listFeeItems(term),
+    [term],
+  );
+  const { data: classes } = useAsync(() => repository.listClasses(), []);
+
+  const [templateErrors, setTemplateErrors] = useState<string[]>([]);
+  const [templateResult, setTemplateResult] = useState<string | null>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const templateInputRef = useRef<HTMLInputElement>(null);
 
   const items = useMemo(() => data ?? [], [data]);
+
+  const levels = useMemo(
+    () =>
+      Array.from(new Set((classes ?? []).map((c) => c.level))).sort(
+        (a, b) => classRank(a) - classRank(b),
+      ),
+    [classes],
+  );
+
+  function downloadTemplate() {
+    const existingByLevel: Record<
+      string,
+      { name: string; amountKobo: number; optional?: boolean }[]
+    > = {};
+    for (const f of items) {
+      (existingByLevel[f.level] ??= []).push({
+        name: f.name,
+        amountKobo: f.amount,
+        optional: f.optional,
+      });
+    }
+    exportToXlsx(
+      "Fee template",
+      [...FEE_TEMPLATE_HEADERS],
+      buildFeeTemplateRows(levels, existingByLevel),
+    );
+  }
+
+  async function onTemplateFile(file: File) {
+    setTemplateErrors([]);
+    setTemplateResult(null);
+    setTemplateBusy(true);
+    try {
+      const sheet = await readSheetRows(file);
+      const { rows, errors } = parseFeeTemplate(sheet, levels);
+      if (errors.length) setTemplateErrors(errors.slice(0, 10));
+      if (rows.length) {
+        const res = await repository.importFeeStructure(term, rows);
+        setTemplateResult(
+          `Updated ${res.levelsUpdated} ${res.levelsUpdated === 1 ? "class" : "classes"}, wrote ${res.itemsWritten} ${res.itemsWritten === 1 ? "item" : "items"}.`,
+        );
+        reload();
+      } else if (!errors.length) {
+        setTemplateErrors(["The file had no rows to import."]);
+      }
+    } catch {
+      setTemplateErrors(["Couldn't read that file. Use the downloaded template."]);
+    } finally {
+      setTemplateBusy(false);
+      if (templateInputRef.current) templateInputRef.current.value = "";
+    }
+  }
   const byLevel = useMemo(() => {
     const map = new Map<string, FeeItem[]>();
     for (const it of items) {
@@ -489,6 +555,55 @@ function FeesPanel() {
         </Button>
       }
     >
+      <Card className="mb-4">
+        <p className="font-semibold text-ink">Fee template</p>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Download the template, set each class&apos;s items and amounts, then
+          upload it. This becomes the default bill for new students.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={downloadTemplate}
+            disabled={levels.length === 0}
+          >
+            Download template
+          </Button>
+          <Button
+            onClick={() => templateInputRef.current?.click()}
+            disabled={templateBusy || levels.length === 0}
+          >
+            {templateBusy ? "Uploading…" : "Upload filled template"}
+          </Button>
+          <input
+            ref={templateInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onTemplateFile(file);
+            }}
+          />
+        </div>
+        {templateResult && (
+          <div className="mt-3">
+            <Banner tone="success">{templateResult}</Banner>
+          </div>
+        )}
+        {templateErrors.length > 0 && (
+          <div className="mt-3">
+            <Banner tone="error" title="Some rows were not imported">
+              <ul className="mt-1 list-disc pl-4">
+                {templateErrors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </Banner>
+          </div>
+        )}
+      </Card>
+
       {loading && !data ? (
         <LoadingBlock label="Loading fees…" />
       ) : byLevel.length === 0 ? (
