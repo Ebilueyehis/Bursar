@@ -24,6 +24,12 @@ import {
   cn,
 } from "@/components/ui";
 import { parseNairaToKobo } from "@/lib/money";
+import { BillPicker } from "@/components/BillPicker";
+import {
+  type BillDraft,
+  checkedLines,
+  validateBillDraft,
+} from "@/lib/fees/billMath";
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -123,7 +129,7 @@ export default function StudentDetailPage() {
 
 // --- Details / Payments / Receipts tabs -------------------------------------
 
-type RecordTab = "details" | "payments" | "receipts";
+type RecordTab = "details" | "bill" | "payments" | "receipts";
 
 function RecordTabs({
   account,
@@ -144,6 +150,9 @@ function RecordTabs({
   const { student, guardian, outstanding } = account;
   const tabs: { id: RecordTab; label: string }[] = [
     { id: "details", label: "Details" },
+    ...(canEditFees && account.bill.id
+      ? [{ id: "bill" as const, label: "Bill" }]
+      : []),
     { id: "payments", label: "Payments" },
     { id: "receipts", label: "Receipts" },
   ];
@@ -241,6 +250,19 @@ function RecordTabs({
         </div>
       )}
 
+      {tab === "bill" && (
+        <Card>
+          <p className="mb-1 text-sm font-semibold text-ink">
+            Edit bill · {termLabel(term)}
+          </p>
+          <p className="mb-3 text-sm text-ink-muted">
+            Untick items that do not apply, adjust amounts, or add a line. A
+            discount with a reason shows under Fees as a scholarship.
+          </p>
+          <BillEditor account={account} term={term} onSaved={onReload} />
+        </Card>
+      )}
+
       {tab === "payments" && (
         <Card className="p-0">
           {account.payments.length === 0 ? (
@@ -321,6 +343,63 @@ function RecordTabs({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function BillEditor({
+  account,
+  term,
+  onSaved,
+}: {
+  account: StudentAccount;
+  term: TermName;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<BillDraft>({
+    lines: account.bill.lines.map((l) => ({
+      name: l.name,
+      amountKobo: l.amount,
+      checked: true,
+    })),
+    discountKobo: account.bill.discount,
+    discountReason: account.bill.discountReason ?? "",
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setError(null);
+    setSaved(false);
+    const problem = validateBillDraft(draft, account.paid);
+    if (problem) return setError(problem);
+    setSaving(true);
+    try {
+      await repository.updateBillLines(account.student.id, term, checkedLines(draft));
+      await repository.setStudentDiscount(
+        account.student.id,
+        term,
+        draft.discountKobo,
+        draft.discountReason.trim() || undefined,
+      );
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the bill.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {error && <Banner tone="error">{error}</Banner>}
+      {saved && <Banner tone="success">Bill updated.</Banner>}
+      <BillPicker value={draft} onChange={setDraft} paidKobo={account.paid} />
+      <Button onClick={save} disabled={saving} className="w-full">
+        {saving ? "Saving…" : "Save bill"}
+      </Button>
     </div>
   );
 }
