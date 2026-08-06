@@ -226,6 +226,15 @@ Mirrors the existing fee-template flow (SheetJS `exportToXlsx` / `readSheetRows`
 - Blank score cells parse as null (not entered), not 0. A row with all three
   score cells blank is skipped (nothing to save), not an error.
 
+### One source, both lenses
+Uploaded rows write to the single `assessments` table keyed by
+`(student_id, subject_id, session_id, term)`. Every read view derives from those
+same rows, so a single upload powers **both** the by-subject lens
+(`listSubjectAverages`, `listStudentSubjectScores`) and the by-student lens
+(`listClassStudentAverages`, `getStudentReport`) with no duplication or separate
+storage. The in-app grid and the template upload both funnel into the same
+upsert, so the two entry methods and the two views stay perfectly consistent.
+
 ## The three drill levels
 
 1. `/records` — class list; each row shows className, studentCount, avgCa,
