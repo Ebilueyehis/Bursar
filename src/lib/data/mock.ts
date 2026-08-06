@@ -48,9 +48,14 @@ import type {
   RecordPaymentInput,
   Repository,
   SaveAssessmentsInput,
+  ClassRecordSummary,
+  SubjectAverageRow,
+  StudentSubjectScore,
+  StudentReport,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { SUBJECT_NAMES } from "@/lib/domain/constants";
+import { componentTotal, gradeFor } from "@/lib/records/grading";
 
 /**
  * In-memory implementation of the Repository. Data lives in module arrays that
@@ -149,6 +154,12 @@ function buildAccount(student: Student, term: TermName): StudentAccount | null {
 
 // Simulate a little latency so loading states are real in the prototype.
 const tick = () => new Promise<void>((r) => setTimeout(r, 120));
+
+/** Mean rounded to a whole number, or null for an empty list. */
+function mean(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+}
 
 export const mockRepository: Repository = {
   async getSchool(): Promise<School> {
@@ -526,6 +537,106 @@ export const mockRepository: Repository = {
         });
       }
     }
+  },
+
+  async listClassRecordSummaries(term: TermName): Promise<ClassRecordSummary[]> {
+    await tick();
+    return CLASSES.map((cls) => {
+      const studentIds = STUDENTS.filter((s) => s.classId === cls.id).map((s) => s.id);
+      const rows = ASSESSMENTS.filter(
+        (a) => a.term === term && a.sessionId === SESSION.id && studentIds.includes(a.studentId),
+      );
+      const caVals = rows
+        .filter((r) => r.ca1 != null && r.ca2 != null)
+        .map((r) => (r.ca1 as number) + (r.ca2 as number));
+      const examVals = rows.filter((r) => r.exam != null).map((r) => r.exam as number);
+      return {
+        classId: cls.id,
+        className: cls.name,
+        studentCount: studentIds.length,
+        avgCa: mean(caVals),
+        avgExam: mean(examVals),
+      };
+    });
+  },
+
+  async listSubjectAverages(classId: string, term: TermName): Promise<SubjectAverageRow[]> {
+    await tick();
+    const studentIds = STUDENTS.filter((s) => s.classId === classId).map((s) => s.id);
+    return SUBJECTS.map((subj) => {
+      const rows = ASSESSMENTS.filter(
+        (a) => a.subjectId === subj.id && a.term === term && a.sessionId === SESSION.id && studentIds.includes(a.studentId),
+      );
+      const totals = rows
+        .map((r) => componentTotal(r.ca1, r.ca2, r.exam))
+        .filter((t): t is number => t != null);
+      return {
+        subjectId: subj.id,
+        subjectName: subj.name,
+        avgCa1: mean(rows.filter((r) => r.ca1 != null).map((r) => r.ca1 as number)),
+        avgCa2: mean(rows.filter((r) => r.ca2 != null).map((r) => r.ca2 as number)),
+        avgExam: mean(rows.filter((r) => r.exam != null).map((r) => r.exam as number)),
+        avgTotal: mean(totals),
+      };
+    }).filter((r) => r.avgTotal != null);
+  },
+
+  async listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]> {
+    await tick();
+    const students = STUDENTS.filter((s) => s.classId === classId);
+    return students.map((s) => {
+      const a = ASSESSMENTS.find(
+        (x) => x.studentId === s.id && x.subjectId === subjectId && x.term === term && x.sessionId === SESSION.id,
+      );
+      const ca1 = a?.ca1 ?? null;
+      const ca2 = a?.ca2 ?? null;
+      const exam = a?.exam ?? null;
+      const total = componentTotal(ca1, ca2, exam);
+      return {
+        studentId: s.id,
+        studentName: `${s.firstName} ${s.lastName}`,
+        ca1, ca2, exam, total, grade: gradeFor(total),
+      };
+    });
+  },
+
+  async listClassStudentAverages(classId: string, term: TermName) {
+    await tick();
+    const students = STUDENTS.filter((s) => s.classId === classId);
+    return students.map((s) => {
+      const totals = ASSESSMENTS.filter(
+        (a) => a.studentId === s.id && a.term === term && a.sessionId === SESSION.id,
+      )
+        .map((a) => componentTotal(a.ca1, a.ca2, a.exam))
+        .filter((t): t is number => t != null);
+      return { studentId: s.id, studentName: `${s.firstName} ${s.lastName}`, average: mean(totals) };
+    });
+  },
+
+  async getStudentReport(studentId: string, term: TermName): Promise<StudentReport> {
+    await tick();
+    const student = STUDENTS.find((s) => s.id === studentId);
+    const cls = student ? CLASSES.find((c) => c.id === student.classId) : undefined;
+    const rows = ASSESSMENTS.filter(
+      (a) => a.studentId === studentId && a.term === term && a.sessionId === SESSION.id,
+    ).map((a) => {
+      const subj = SUBJECTS.find((s) => s.id === a.subjectId);
+      const total = componentTotal(a.ca1, a.ca2, a.exam);
+      return {
+        subjectId: a.subjectId,
+        subjectName: subj?.name ?? "Subject",
+        ca1: a.ca1, ca2: a.ca2, exam: a.exam, total, grade: gradeFor(total),
+      };
+    });
+    const totals = rows.map((r) => r.total).filter((t): t is number => t != null);
+    return {
+      studentId,
+      studentName: student ? `${student.firstName} ${student.lastName}` : "Student",
+      className: cls?.name ?? "-",
+      term,
+      rows,
+      overallAverage: mean(totals),
+    };
   },
 
   async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {

@@ -37,10 +37,15 @@ import type {
   RecordPaymentInput,
   Repository,
   SaveAssessmentsInput,
+  ClassRecordSummary,
+  SubjectAverageRow,
+  StudentSubjectScore,
+  StudentReport,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { groupLedger } from "@/lib/data/ledger";
 import { SUBJECT_NAMES } from "@/lib/domain/constants";
+import { componentTotal, gradeFor } from "@/lib/records/grading";
 
 /**
  * Supabase-backed implementation of the Repository. Uses the browser client, so
@@ -53,6 +58,14 @@ type Row = Record<string, unknown>;
 
 function sb() {
   return createClient();
+}
+
+function meanOf(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+}
+function numOrNull(v: unknown): number | null {
+  return v == null ? null : Number(v);
 }
 
 // --- mappers ----------------------------------------------------------------
@@ -815,6 +828,124 @@ export const supabaseRepository: Repository = {
       .from("assessments")
       .upsert(payload, { onConflict: "student_id,subject_id,session_id,term" });
     if (error) throw new Error("These scores couldn't be saved. Please try again.");
+  },
+
+  async listClassRecordSummaries(term: TermName): Promise<ClassRecordSummary[]> {
+    const client = sb();
+    const [{ data: classes }, { data: students }, { data: rows }] = await Promise.all([
+      client.from("classes").select("id,name"),
+      client.from("students").select("id,class_id"),
+      client.from("assessments").select("student_id,ca1,ca2,exam").eq("term", term),
+    ]);
+    return (classes ?? []).map((c) => {
+      const ids = new Set((students ?? []).filter((s) => s.class_id === c.id).map((s) => s.id));
+      const mine = (rows ?? []).filter((r) => ids.has(r.student_id as string));
+      const ca = mine.filter((r) => r.ca1 != null && r.ca2 != null).map((r) => Number(r.ca1) + Number(r.ca2));
+      const ex = mine.filter((r) => r.exam != null).map((r) => Number(r.exam));
+      return {
+        classId: c.id as string,
+        className: c.name as string,
+        studentCount: ids.size,
+        avgCa: meanOf(ca),
+        avgExam: meanOf(ex),
+      };
+    });
+  },
+
+  async listSubjectAverages(classId: string, term: TermName): Promise<SubjectAverageRow[]> {
+    const client = sb();
+    const [{ data: students }, { data: subjects }] = await Promise.all([
+      client.from("students").select("id").eq("class_id", classId),
+      client.from("subjects").select("id,name").order("name"),
+    ]);
+    const ids = (students ?? []).map((s) => s.id as string);
+    if (ids.length === 0) return [];
+    const { data: rows } = await client
+      .from("assessments").select("subject_id,ca1,ca2,exam").eq("term", term).in("student_id", ids);
+    return (subjects ?? []).map((subj) => {
+      const mine = (rows ?? []).filter((r) => r.subject_id === subj.id);
+      const totals = mine
+        .map((r) => componentTotal(numOrNull(r.ca1), numOrNull(r.ca2), numOrNull(r.exam)))
+        .filter((t): t is number => t != null);
+      return {
+        subjectId: subj.id as string,
+        subjectName: subj.name as string,
+        avgCa1: meanOf(mine.filter((r) => r.ca1 != null).map((r) => Number(r.ca1))),
+        avgCa2: meanOf(mine.filter((r) => r.ca2 != null).map((r) => Number(r.ca2))),
+        avgExam: meanOf(mine.filter((r) => r.exam != null).map((r) => Number(r.exam))),
+        avgTotal: meanOf(totals),
+      };
+    }).filter((r) => r.avgTotal != null);
+  },
+
+  async listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]> {
+    const client = sb();
+    const { data: students } = await client
+      .from("students").select("id,first_name,last_name").eq("class_id", classId);
+    const ids = (students ?? []).map((s) => s.id as string);
+    const { data: rows } = ids.length
+      ? await client.from("assessments").select("*").eq("subject_id", subjectId).eq("term", term).in("student_id", ids)
+      : { data: [] as Row[] };
+    const byStudent = new Map((rows ?? []).map((r) => [r.student_id as string, r]));
+    return (students ?? []).map((s) => {
+      const r = byStudent.get(s.id as string);
+      const ca1 = r ? numOrNull(r.ca1) : null;
+      const ca2 = r ? numOrNull(r.ca2) : null;
+      const exam = r ? numOrNull(r.exam) : null;
+      const total = componentTotal(ca1, ca2, exam);
+      return {
+        studentId: s.id as string,
+        studentName: `${s.first_name} ${s.last_name}`,
+        ca1, ca2, exam, total, grade: gradeFor(total),
+      };
+    });
+  },
+
+  async listClassStudentAverages(classId: string, term: TermName) {
+    const client = sb();
+    const { data: students } = await client
+      .from("students").select("id,first_name,last_name").eq("class_id", classId);
+    const ids = (students ?? []).map((s) => s.id as string);
+    const { data: rows } = ids.length
+      ? await client.from("assessments").select("student_id,ca1,ca2,exam").eq("term", term).in("student_id", ids)
+      : { data: [] as Row[] };
+    return (students ?? []).map((s) => {
+      const totals = (rows ?? [])
+        .filter((r) => r.student_id === s.id)
+        .map((r) => componentTotal(numOrNull(r.ca1), numOrNull(r.ca2), numOrNull(r.exam)))
+        .filter((t): t is number => t != null);
+      return { studentId: s.id as string, studentName: `${s.first_name} ${s.last_name}`, average: meanOf(totals) };
+    });
+  },
+
+  async getStudentReport(studentId: string, term: TermName): Promise<StudentReport> {
+    const client = sb();
+    const [{ data: student }, { data: subjects }, { data: rows }] = await Promise.all([
+      client.from("students").select("id,first_name,last_name,class_id").eq("id", studentId).maybeSingle(),
+      client.from("subjects").select("id,name"),
+      client.from("assessments").select("*").eq("student_id", studentId).eq("term", term),
+    ]);
+    let className = "-";
+    if (student?.class_id) {
+      const { data: cls } = await client.from("classes").select("name").eq("id", student.class_id).maybeSingle();
+      className = (cls?.name as string) ?? "-";
+    }
+    const nameOf = new Map((subjects ?? []).map((s) => [s.id as string, s.name as string]));
+    const reportRows = (rows ?? []).map((r) => {
+      const total = componentTotal(numOrNull(r.ca1), numOrNull(r.ca2), numOrNull(r.exam));
+      return {
+        subjectId: r.subject_id as string,
+        subjectName: nameOf.get(r.subject_id as string) ?? "Subject",
+        ca1: numOrNull(r.ca1), ca2: numOrNull(r.ca2), exam: numOrNull(r.exam),
+        total, grade: gradeFor(total),
+      };
+    });
+    const totals = reportRows.map((r) => r.total).filter((t): t is number => t != null);
+    return {
+      studentId,
+      studentName: student ? `${student.first_name} ${student.last_name}` : "Student",
+      className, term, rows: reportRows, overallAverage: meanOf(totals),
+    };
   },
 
   async listStaff(): Promise<Staff[]> {

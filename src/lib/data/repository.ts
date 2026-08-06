@@ -139,6 +139,54 @@ export interface Repository {
   ensureDefaultSubjects(): Promise<void>;
   /** Upsert scores for one class + subject + term. */
   saveAssessments(input: SaveAssessmentsInput): Promise<void>;
+
+  listClassRecordSummaries(term: TermName): Promise<ClassRecordSummary[]>;
+  listSubjectAverages(classId: string, term: TermName): Promise<SubjectAverageRow[]>;
+  listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]>;
+  listClassStudentAverages(classId: string, term: TermName): Promise<{ studentId: string; studentName: string; average: number | null }[]>;
+  getStudentReport(studentId: string, term: TermName): Promise<StudentReport>;
+}
+
+export interface ClassRecordSummary {
+  classId: string;
+  className: string;
+  studentCount: number;
+  avgCa: number | null;
+  avgExam: number | null;
+}
+export interface SubjectAverageRow {
+  subjectId: string;
+  subjectName: string;
+  avgCa1: number | null;
+  avgCa2: number | null;
+  avgExam: number | null;
+  avgTotal: number | null;
+}
+export interface StudentSubjectScore {
+  studentId: string;
+  studentName: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+  total: number | null;
+  grade: string | null;
+}
+export interface ReportRow {
+  subjectId: string;
+  subjectName: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+  total: number | null;
+  grade: string | null;
+}
+export interface StudentReport {
+  studentId: string;
+  studentName: string;
+  className: string;
+  term: TermName;
+  rows: ReportRow[];
+  overallAverage: number | null;
 }
 
 export interface SaveAssessmentsInput {
