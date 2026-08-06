@@ -8,6 +8,7 @@ import { repository } from "@/lib/data/repository";
 import { can, termLabel } from "@/lib/domain/constants";
 import { EmptyState, LoadingBlock, PageHeader, cn } from "@/components/ui";
 import { ChevronRightIcon } from "@/components/icons";
+import { ClassDetail } from "@/components/records/ClassDetail";
 
 export default function RecordsPage() {
   const { role, term } = useViewer();
@@ -31,8 +32,7 @@ export default function RecordsPage() {
     );
   }
 
-  // Class detail (?class=) is wired in the next slice.
-  void classId;
+  if (classId) return <ClassDetail classId={classId} />;
 
   const classes = data ?? [];
 
