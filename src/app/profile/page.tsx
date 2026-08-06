@@ -15,7 +15,7 @@ import {
   parseFeeTemplate,
 } from "@/lib/fees/feeTemplate";
 import { formatNaira, parseNairaToKobo } from "@/lib/money";
-import type { FeeItem, Staff, StaffType } from "@/lib/domain/types";
+import type { FeeItem, Staff, StaffType, School } from "@/lib/domain/types";
 import {
   Banner,
   Button,
@@ -132,7 +132,8 @@ function PanelShell({
 // --- Account Information ------------------------------------------------------
 
 function AccountPanel() {
-  const { school, session, actorName, role, term } = useViewer();
+  const { session, actorName, role, term } = useViewer();
+  const { data: school, reload } = useAsync(() => repository.getSchool(), []);
   const rows: { k: string; v: string }[] = [
     { k: "Your name", v: actorName || "-" },
     { k: "Your role", v: ROLE_LABELS[role] },
@@ -158,7 +159,88 @@ function AccountPanel() {
           ))}
         </dl>
       </Card>
+      {can(role, "edit_fees") && (
+        <BankAccountCard school={school} onSaved={reload} />
+      )}
     </PanelShell>
+  );
+}
+
+function BankAccountCard({
+  school,
+  onSaved,
+}: {
+  school: School | null;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    accountNumber: school?.bankAccountNumber ?? "",
+    accountName: school?.bankAccountName ?? "",
+    bankName: school?.bankName ?? "",
+  });
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Seed the form once school data arrives (guarded set-state-during-render).
+  if (!seeded && school) {
+    setSeeded(true);
+    setForm({
+      accountNumber: school.bankAccountNumber ?? "",
+      accountName: school.bankAccountName ?? "",
+      bankName: school.bankName ?? "",
+    });
+  }
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function save() {
+    setError(null);
+    setResult(null);
+    if (!form.accountNumber.trim() || !form.accountName.trim() || !form.bankName.trim()) {
+      return setError("Enter the account number, account name and bank name.");
+    }
+    setSaving(true);
+    try {
+      await repository.updateBankAccount({
+        accountNumber: form.accountNumber,
+        accountName: form.accountName,
+        bankName: form.bankName,
+      });
+      setResult("Bank account details saved.");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="mt-4">
+      <h3 className="font-display text-lg font-bold text-ink">Bank Account Information</h3>
+      <p className="mt-0.5 mb-4 text-sm text-ink-muted">
+        Shown on every invoice and receipt so parents pay into the right account.
+      </p>
+      <div className="space-y-3">
+        <Field label="Account number">
+          <Input value={form.accountNumber} onChange={set("accountNumber")} inputMode="numeric" placeholder="0123456789" />
+        </Field>
+        <Field label="Account name">
+          <Input value={form.accountName} onChange={set("accountName")} placeholder="Tejuosho Group of Schools" />
+        </Field>
+        <Field label="Bank name">
+          <Input value={form.bankName} onChange={set("bankName")} placeholder="First Bank" />
+        </Field>
+        {error && <Banner tone="error">{error}</Banner>}
+        {result && <Banner tone="success">{result}</Banner>}
+        <Button onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save bank details"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 
