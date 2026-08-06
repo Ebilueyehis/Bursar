@@ -2,6 +2,7 @@ import type {
   Expense,
   ExpenseCadence,
   FeeItem,
+  Income,
   LedgerDay,
   Payment,
   PaymentMethod,
@@ -114,6 +115,24 @@ export interface Repository {
 
   /** Save the school's bank account details (shown on invoices/receipts). */
   updateBankAccount(input: BankAccountInput): Promise<void>;
+
+  // --- Income (non-fee money in) --------------------------------------------
+
+  /** Non-fee income entries, newest first, optionally within a date range. */
+  listIncome(filter?: DateFilter): Promise<Income[]>;
+  createIncome(input: CreateIncomeInput): Promise<Income>;
+  updateIncome(id: string, patch: CreateIncomeInput): Promise<Income>;
+  deleteIncome(id: string): Promise<void>;
+}
+
+export interface CreateIncomeInput {
+  source: string;
+  description: string;
+  amountKobo: number;
+  receivedOn: string; // ISO date
+  method: PaymentMethod;
+  note?: string;
+  recordedByName: string;
 }
 
 export interface BankAccountInput {

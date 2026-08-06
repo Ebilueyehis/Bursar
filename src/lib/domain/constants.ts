@@ -117,6 +117,17 @@ export const EXPENSE_CATEGORIES: string[] = [
   "Miscellaneous",
 ];
 
+/** Common non-fee income sources for a Nigerian school. Seed only, free text. */
+export const INCOME_SOURCES: string[] = [
+  "Donation",
+  "Grant",
+  "Uniform sales",
+  "Book sales",
+  "Hall rental",
+  "PTA",
+  "Other",
+];
+
 export const EXPENSE_CADENCES: { value: ExpenseCadence; label: string }[] = [
   { value: "one_off", label: "One-off" },
   { value: "monthly", label: "Monthly" },

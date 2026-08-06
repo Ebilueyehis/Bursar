@@ -2,6 +2,7 @@ import type {
   Bill,
   Expense,
   FeeItem,
+  Income,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -29,6 +30,7 @@ import {
 import type {
   BillLineInput,
   CreateExpenseInput,
+  CreateIncomeInput,
   CreateStaffInput,
   DashboardStats,
   DateFilter,
@@ -57,6 +59,8 @@ const STAFF: Staff[] = [];
 const EXPENSES: Expense[] = [];
 // Fee structure store (level + term → line items). Seeded empty.
 const FEE_ITEMS: FeeItem[] = [];
+// Non-fee income store. Seeded empty.
+const INCOME: Income[] = [];
 
 function inRange(date: string, filter?: DateFilter): boolean {
   if (filter?.from && date < filter.from) return false;
@@ -385,6 +389,55 @@ export const mockRepository: Repository = {
     await tick();
     const i = EXPENSES.findIndex((e) => e.id === id);
     if (i >= 0) EXPENSES.splice(i, 1);
+  },
+
+  async listIncome(filter?: DateFilter): Promise<Income[]> {
+    await tick();
+    return INCOME.filter((i) => inRange(i.receivedOn, filter)).sort((a, b) =>
+      b.receivedOn.localeCompare(a.receivedOn),
+    );
+  },
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    await tick();
+    if (input.amountKobo <= 0)
+      throw new Error("Enter an amount greater than zero.");
+    const income: Income = {
+      id: `inc-new-${Date.now()}`,
+      schoolId: SCHOOL.id,
+      source: input.source,
+      description: input.description,
+      amount: input.amountKobo,
+      receivedOn: input.receivedOn,
+      method: input.method,
+      note: input.note,
+      recordedByName: input.recordedByName,
+    };
+    INCOME.push(income);
+    return income;
+  },
+
+  async updateIncome(id: string, patch: CreateIncomeInput): Promise<Income> {
+    await tick();
+    if (patch.amountKobo <= 0)
+      throw new Error("Enter an amount greater than zero.");
+    const existing = INCOME.find((i) => i.id === id);
+    if (!existing) throw new Error("Income entry not found.");
+    Object.assign(existing, {
+      source: patch.source,
+      description: patch.description,
+      amount: patch.amountKobo,
+      receivedOn: patch.receivedOn,
+      method: patch.method,
+      note: patch.note,
+    });
+    return existing;
+  },
+
+  async deleteIncome(id: string): Promise<void> {
+    await tick();
+    const i = INCOME.findIndex((x) => x.id === id);
+    if (i >= 0) INCOME.splice(i, 1);
   },
 
   async listStaff(): Promise<Staff[]> {

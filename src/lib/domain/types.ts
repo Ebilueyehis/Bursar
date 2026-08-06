@@ -180,11 +180,24 @@ export interface Expense {
   note?: string;
 }
 
-/** One line in the daily ledger — a payment (in) or an expense (out). */
+/** Non-fee money the school takes in: donations, grants, sales, rentals. */
+export interface Income {
+  id: string;
+  schoolId: string;
+  source: string;
+  description: string;
+  amount: Kobo;
+  receivedOn: string; // ISO date
+  method: PaymentMethod;
+  note?: string;
+  recordedByName: string;
+}
+
+/** One line in the daily ledger — a payment (in), income (in), or expense (out). */
 export interface LedgerEntry {
   id: string;
   date: string; // ISO date
-  kind: "payment" | "expense";
+  kind: "payment" | "expense" | "income";
   direction: "in" | "out";
   title: string; // student name / payee
   subtitle: string; // receipt no + method / category + cadence

@@ -207,6 +207,25 @@ create index on staff (school_id, active);
 create index on expenses (school_id, spent_on);
 create index on expenses (school_id, category);
 
+-- Non-fee money in: donations, grants, sales, rentals. Unions into the ledger
+-- as credits alongside fee payments.
+create table income (
+  id               uuid primary key default gen_random_uuid(),
+  school_id        uuid not null references schools(id) on delete cascade,
+  session_id       uuid references sessions(id) on delete set null,
+  source           text not null,
+  description      text not null,
+  amount_kobo      bigint not null check (amount_kobo > 0),
+  received_on      date not null default current_date,
+  method           pay_method not null default 'cash',
+  recorded_by      uuid references profiles(id),
+  recorded_by_name text not null,
+  note             text,
+  created_at       timestamptz not null default now()
+);
+
+create index on income (school_id, received_on);
+
 -- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
 -- ---------------------------------------------------------------------------
@@ -261,6 +280,7 @@ alter table bill_lines enable row level security;
 alter table payments   enable row level security;
 alter table staff      enable row level security;
 alter table expenses   enable row level security;
+alter table income     enable row level security;
 
 -- Everyone signed in may read rows for their own school. -------------------
 create policy read_same_school on schools
@@ -346,6 +366,13 @@ create policy manage_expenses on expenses
   for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
   with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 
+-- Income (money in): same shape as expenses. Proprietor/Bursar only.
+create policy read_same_school on income
+  for select using (school_id = auth_school_id());
+create policy manage_income on income
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
+
 -- ============================================================================
 -- Grants — least privilege for the PostgREST API roles
 -- ============================================================================
@@ -357,7 +384,7 @@ revoke all on all tables in schema public from authenticated;
 
 grant select, insert, update, delete on table
   schools, sessions, classes, guardians, students,
-  fee_items, bills, bill_lines, payments, staff, expenses
+  fee_items, bills, bill_lines, payments, staff, expenses, income
   to authenticated;
 grant select on table profiles to authenticated;          -- write blocked: role escalation prevention
 grant select on table student_balances to authenticated;  -- view is read-only

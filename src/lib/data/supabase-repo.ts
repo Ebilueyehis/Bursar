@@ -3,6 +3,7 @@ import type {
   Bill,
   Expense,
   FeeItem,
+  Income,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -18,6 +19,7 @@ import type {
 import type {
   BillLineInput,
   CreateExpenseInput,
+  CreateIncomeInput,
   CreateStaffInput,
   CreateStudentInput,
   DashboardStats,
@@ -127,6 +129,20 @@ function mapStaff(r: Row): Staff {
     monthlySalary: Number(r.monthly_salary_kobo ?? 0),
     phone: (r.phone as string) ?? undefined,
     active: (r.active as boolean) ?? true,
+  };
+}
+
+function mapIncome(r: Row): Income {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    source: r.source as string,
+    description: r.description as string,
+    amount: Number(r.amount_kobo),
+    receivedOn: r.received_on as string,
+    method: r.method as Income["method"],
+    note: (r.note as string) ?? undefined,
+    recordedByName: r.recorded_by_name as string,
   };
 }
 
@@ -616,6 +632,66 @@ export const supabaseRepository: Repository = {
   async deleteExpense(id: string): Promise<void> {
     const { error } = await sb().from("expenses").delete().eq("id", id);
     if (error) throw new Error("This expense couldn't be deleted.");
+  },
+
+  async listIncome(filter?: DateFilter): Promise<Income[]> {
+    const client = sb();
+    let q = client.from("income").select("*").order("received_on", { ascending: false });
+    if (filter?.from) q = q.gte("received_on", filter.from);
+    if (filter?.to) q = q.lte("received_on", filter.to);
+    const { data } = await q;
+    return (data ?? []).map(mapIncome);
+  },
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    if (input.amountKobo <= 0) throw new Error("Enter an amount greater than zero.");
+    const { data: { user } } = await client.auth.getUser();
+    const { data, error } = await client
+      .from("income")
+      .insert({
+        school_id: school.id,
+        session_id: session?.id ?? null,
+        source: input.source,
+        description: input.description,
+        amount_kobo: input.amountKobo,
+        received_on: input.receivedOn,
+        method: input.method,
+        recorded_by: user?.id ?? null,
+        recorded_by_name: input.recordedByName,
+        note: input.note ?? null,
+      })
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("This income couldn't be saved. Please try again.");
+    return mapIncome(data);
+  },
+
+  async updateIncome(id: string, patch: CreateIncomeInput): Promise<Income> {
+    const client = sb();
+    if (patch.amountKobo <= 0) throw new Error("Enter an amount greater than zero.");
+    const { data, error } = await client
+      .from("income")
+      .update({
+        source: patch.source,
+        description: patch.description,
+        amount_kobo: patch.amountKobo,
+        received_on: patch.receivedOn,
+        method: patch.method,
+        note: patch.note ?? null,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("This income couldn't be updated.");
+    return mapIncome(data);
+  },
+
+  async deleteIncome(id: string): Promise<void> {
+    const { error } = await sb().from("income").delete().eq("id", id);
+    if (error) throw new Error("This income couldn't be deleted.");
   },
 
   async listStaff(): Promise<Staff[]> {
