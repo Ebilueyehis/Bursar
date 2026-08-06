@@ -161,6 +161,8 @@ listClassStudentAverages(classId: string, term: TermName): Promise<{ studentId: 
 getStudentReport(studentId: string, term: TermName): Promise<StudentReport>;
 /** Upsert scores for one class + subject + term. */
 saveAssessments(input: SaveAssessmentsInput): Promise<void>;
+/** Upsert parsed template rows (any mix of subjects) for a term. */
+importAssessments(term: TermName, rows: AssessmentImportRow[], recordedByName: string): Promise<AssessmentImportResult>;
 ```
 
 ```ts
@@ -171,6 +173,21 @@ export interface SaveAssessmentsInput {
   scores: { studentId: string; ca1: number | null; ca2: number | null; exam: number | null }[];
   recordedByName: string;
 }
+
+/** One validated row from a parsed upload: identity resolved to ids. */
+export interface AssessmentImportRow {
+  studentId: string;
+  subjectId: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+}
+
+export interface AssessmentImportResult {
+  updated: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+}
 ```
 
 Grade/total math lives in a pure, tested helper (`src/lib/records/grading.ts`):
@@ -180,11 +197,34 @@ isolation.
 
 ## Score entry
 
-- From a class detail, a "Enter scores" action opens a grid: choose subject
+Two ways to enter scores, both gated to `manage_grades`:
+
+### In-app grid
+- From a class detail, an "Enter scores" action opens a grid: choose subject
   (term comes from the app term filter), then a row per student with three
   numeric inputs (CA1, CA2, Exam), each validated against its max. Save calls
-  `saveAssessments` (upsert). Gated to `manage_grades`.
+  `saveAssessments` (upsert).
 - Empty inputs save as null (not entered), not 0.
+
+### Excel template download + upload (bulk)
+Mirrors the existing fee-template flow (SheetJS `exportToXlsx` / `readSheetRows`).
+
+- **Download template** (from a class detail): builds a workbook pre-filled with
+  the class's students crossed with the school's subjects, so the user just
+  types scores. One row per student-per-subject. Columns:
+  `ASSESSMENT_TEMPLATE_HEADERS = ["Admission No", "Student", "Class", "Subject", "CA1", "CA2", "Exam"]`.
+  The first four columns are pre-filled; CA1/CA2/Exam are blank. `Admission No`
+  is the stable match key on upload (names are not unique).
+- **Upload template**: parses the sheet, matches each row to a student by
+  `Admission No` and a subject by `Subject` name (case-insensitive), validates
+  each score against its component max, then upserts. Rows with an unknown
+  admission number or subject, or an out-of-range score, are skipped with a
+  per-row message; valid rows still save. The parse + validation live in a pure,
+  tested helper `src/lib/records/recordsTemplate.ts`
+  (`ASSESSMENT_TEMPLATE_HEADERS`, `buildAssessmentTemplateRows(students, subjects, className)`,
+  `parseAssessmentTemplate(sheetRows, knownStudents, knownSubjects, term)`).
+- Blank score cells parse as null (not entered), not 0. A row with all three
+  score cells blank is skipped (nothing to save), not an error.
 
 ## The three drill levels
 
@@ -218,7 +258,13 @@ delete` granted to authenticated (RLS governs rows).
 - Mock repository: `saveAssessments` upsert (create then edit same row),
   `listClassRecordSummaries` averages, `listSubjectAverages`,
   `listStudentSubjectScores` (grade resolved), `getStudentReport` overall
-  average with a partially-scored student.
+  average with a partially-scored student, `importAssessments` upsert with a
+  mix of valid + skipped rows.
+- `recordsTemplate.ts`: `buildAssessmentTemplateRows` produces one row per
+  student-per-subject with the four identity columns filled and scores blank;
+  `parseAssessmentTemplate` matches by admission number + subject name, returns
+  per-row errors for unknown student/subject and out-of-range scores, treats
+  all-blank rows as skipped, and blank cells as null.
 - Live smoke via Supabase MCP: insert an assessment, read it back; confirm
   `subjects`/`assessments` RLS policies exist (read + role-scoped write) and the
   unique constraint blocks a duplicate `(student, subject, session, term)`.
