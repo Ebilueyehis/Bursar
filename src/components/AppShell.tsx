@@ -29,13 +29,13 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
   { href: "/students", label: "Students", icon: StudentsIcon },
-  { href: "/ledger", label: "Ledger", icon: LedgerIcon, permission: "view_ledger" },
+  { href: "/payments", label: "Payments", icon: LedgerIcon, permission: "view_ledger" },
 ];
 
 /** Screen titles keyed by their route base, longest match wins. */
 const TITLES: { base: string; title: string }[] = [
   { base: "/students", title: "Students" },
-  { base: "/ledger", title: "Ledger" },
+  { base: "/payments", title: "Payments" },
   { base: "/entry", title: "New Entry" },
   { base: "/profile", title: "Profile & settings" },
   { base: "/", title: "Dashboard" },
