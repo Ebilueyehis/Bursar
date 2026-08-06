@@ -31,6 +31,7 @@ import type {
   BillLineInput,
   CreateExpenseInput,
   CreateIncomeInput,
+  IncomeRow,
   CreateStaffInput,
   DashboardStats,
   DateFilter,
@@ -440,6 +441,39 @@ export const mockRepository: Repository = {
     if (i >= 0) INCOME.splice(i, 1);
   },
 
+  async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {
+    await tick();
+    const rows: IncomeRow[] = [];
+    for (const p of PAYMENTS) {
+      if (!inRange(p.paidOn, filter)) continue;
+      rows.push({
+        kind: "fee",
+        id: p.id,
+        date: p.paidOn,
+        source: "School fee",
+        description: studentName(p.studentId),
+        amount: p.amount,
+        method: p.method,
+        recordedByName: p.recordedByName,
+        studentId: p.studentId,
+      });
+    }
+    for (const i of INCOME) {
+      if (!inRange(i.receivedOn, filter)) continue;
+      rows.push({
+        kind: "other",
+        id: i.id,
+        date: i.receivedOn,
+        source: i.source,
+        description: i.description,
+        amount: i.amount,
+        method: i.method,
+        recordedByName: i.recordedByName,
+      });
+    }
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  },
+
   async listStaff(): Promise<Staff[]> {
     await tick();
     return [...STAFF].sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -566,6 +600,20 @@ export const mockRepository: Repository = {
         amount: e.amount,
         method: e.method,
         reference: e.id,
+      });
+    }
+    for (const i of INCOME) {
+      if (!inRange(i.receivedOn, filter)) continue;
+      entries.push({
+        id: i.id,
+        date: i.receivedOn,
+        kind: "income",
+        direction: "in",
+        title: i.source,
+        subtitle: `${i.description} · ${i.method}`,
+        amount: i.amount,
+        method: i.method,
+        reference: i.id,
       });
     }
     return groupLedger(entries);

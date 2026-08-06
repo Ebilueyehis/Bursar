@@ -123,6 +123,21 @@ export interface Repository {
   createIncome(input: CreateIncomeInput): Promise<Income>;
   updateIncome(id: string, patch: CreateIncomeInput): Promise<Income>;
   deleteIncome(id: string): Promise<void>;
+
+  /** Merged money-in view: fee payments + non-fee income, newest first. */
+  listIncomeView(filter?: DateFilter): Promise<IncomeRow[]>;
+}
+
+export interface IncomeRow {
+  kind: "fee" | "other";
+  id: string;
+  date: string;
+  source: string;
+  description: string;
+  amount: number; // kobo
+  method: PaymentMethod;
+  recordedByName: string;
+  studentId?: string;
 }
 
 export interface CreateIncomeInput {

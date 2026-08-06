@@ -20,6 +20,7 @@ import type {
   BillLineInput,
   CreateExpenseInput,
   CreateIncomeInput,
+  IncomeRow,
   CreateStaffInput,
   CreateStudentInput,
   DashboardStats,
@@ -694,6 +695,59 @@ export const supabaseRepository: Repository = {
     if (error) throw new Error("This income couldn't be deleted.");
   },
 
+  async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {
+    const client = sb();
+    let pq = client.from("payments").select("*").order("paid_on", { ascending: false });
+    if (filter?.from) pq = pq.gte("paid_on", filter.from);
+    if (filter?.to) pq = pq.lte("paid_on", filter.to);
+    let iq = client.from("income").select("*").order("received_on", { ascending: false });
+    if (filter?.from) iq = iq.gte("received_on", filter.from);
+    if (filter?.to) iq = iq.lte("received_on", filter.to);
+    const [{ data: payments }, { data: incomeRows }] = await Promise.all([pq, iq]);
+
+    const studentIds = [...new Set((payments ?? []).map((p) => p.student_id as string))];
+    const nameById = new Map<string, string>();
+    if (studentIds.length) {
+      const { data: students } = await client
+        .from("students")
+        .select("id,first_name,last_name")
+        .in("id", studentIds);
+      (students ?? []).forEach((s) =>
+        nameById.set(s.id as string, `${s.first_name} ${s.last_name}`),
+      );
+    }
+
+    const rows: IncomeRow[] = [];
+    for (const p of payments ?? []) {
+      const pay = mapPayment(p);
+      rows.push({
+        kind: "fee",
+        id: pay.id,
+        date: pay.paidOn,
+        source: "School fee",
+        description: nameById.get(pay.studentId) ?? "Student",
+        amount: pay.amount,
+        method: pay.method,
+        recordedByName: pay.recordedByName,
+        studentId: pay.studentId,
+      });
+    }
+    for (const row of incomeRows ?? []) {
+      const inc = mapIncome(row);
+      rows.push({
+        kind: "other",
+        id: inc.id,
+        date: inc.receivedOn,
+        source: inc.source,
+        description: inc.description,
+        amount: inc.amount,
+        method: inc.method,
+        recordedByName: inc.recordedByName,
+      });
+    }
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  },
+
   async listStaff(): Promise<Staff[]> {
     const { data } = await sb().from("staff").select("*").order("full_name");
     return (data ?? []).map(mapStaff);
@@ -820,7 +874,11 @@ export const supabaseRepository: Repository = {
     if (filter?.from) eq = eq.gte("spent_on", filter.from);
     if (filter?.to) eq = eq.lte("spent_on", filter.to);
 
-    const [{ data: payments }, { data: expenses }] = await Promise.all([pq, eq]);
+    let iq = client.from("income").select("*").order("received_on", { ascending: false });
+    if (filter?.from) iq = iq.gte("received_on", filter.from);
+    if (filter?.to) iq = iq.lte("received_on", filter.to);
+
+    const [{ data: payments }, { data: expenses }, { data: incomeRows }] = await Promise.all([pq, eq, iq]);
 
     // Resolve student names for payment rows in one query.
     const studentIds = [...new Set((payments ?? []).map((p) => p.student_id as string))];
@@ -862,6 +920,20 @@ export const supabaseRepository: Repository = {
         amount: e.amount,
         method: e.method,
         reference: e.id,
+      });
+    }
+    for (const row of incomeRows ?? []) {
+      const inc = mapIncome(row);
+      entries.push({
+        id: inc.id,
+        date: inc.receivedOn,
+        kind: "income",
+        direction: "in",
+        title: inc.source,
+        subtitle: `${inc.description} · ${inc.method}`,
+        amount: inc.amount,
+        method: inc.method,
+        reference: inc.id,
       });
     }
     return groupLedger(entries);
