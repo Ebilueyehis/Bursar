@@ -145,6 +145,21 @@ export interface Repository {
   listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]>;
   listClassStudentAverages(classId: string, term: TermName): Promise<{ studentId: string; studentName: string; average: number | null }[]>;
   getStudentReport(studentId: string, term: TermName): Promise<StudentReport>;
+  /** Upsert parsed template rows (any mix of subjects) for a term. */
+  importAssessments(term: TermName, rows: AssessmentImportRow[], recordedByName: string): Promise<AssessmentImportResult>;
+}
+
+export interface AssessmentImportRow {
+  studentId: string;
+  subjectId: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+}
+export interface AssessmentImportResult {
+  updated: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
 }
 
 export interface ClassRecordSummary {

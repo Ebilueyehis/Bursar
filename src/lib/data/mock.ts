@@ -52,6 +52,7 @@ import type {
   SubjectAverageRow,
   StudentSubjectScore,
   StudentReport,
+  AssessmentImportResult,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { SUBJECT_NAMES } from "@/lib/domain/constants";
@@ -637,6 +638,37 @@ export const mockRepository: Repository = {
       rows,
       overallAverage: mean(totals),
     };
+  },
+
+  async importAssessments(term, rows, recordedByName): Promise<AssessmentImportResult> {
+    await tick();
+    let updated = 0;
+    for (const r of rows) {
+      const existing = ASSESSMENTS.find(
+        (a) => a.studentId === r.studentId && a.subjectId === r.subjectId && a.term === term && a.sessionId === SESSION.id,
+      );
+      if (existing) {
+        existing.ca1 = r.ca1;
+        existing.ca2 = r.ca2;
+        existing.exam = r.exam;
+        existing.recordedByName = recordedByName;
+      } else {
+        ASSESSMENTS.push({
+          id: `asm-${Date.now()}-${ASSESSMENTS.length}`,
+          schoolId: SCHOOL.id,
+          studentId: r.studentId,
+          subjectId: r.subjectId,
+          sessionId: SESSION.id,
+          term,
+          ca1: r.ca1,
+          ca2: r.ca2,
+          exam: r.exam,
+          recordedByName,
+        });
+      }
+      updated += 1;
+    }
+    return { updated, skipped: 0, errors: [] };
   },
 
   async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {

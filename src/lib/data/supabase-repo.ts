@@ -41,6 +41,7 @@ import type {
   SubjectAverageRow,
   StudentSubjectScore,
   StudentReport,
+  AssessmentImportResult,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { groupLedger } from "@/lib/data/ledger";
@@ -946,6 +947,23 @@ export const supabaseRepository: Repository = {
       studentName: student ? `${student.first_name} ${student.last_name}` : "Student",
       className, term, rows: reportRows, overallAverage: meanOf(totals),
     };
+  },
+
+  async importAssessments(term, rows, recordedByName): Promise<AssessmentImportResult> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    if (rows.length === 0) return { updated: 0, skipped: 0, errors: [] };
+    const { data: { user } } = await client.auth.getUser();
+    const payload = rows.map((r) => ({
+      school_id: school.id, student_id: r.studentId, subject_id: r.subjectId,
+      session_id: session?.id ?? null, term, ca1: r.ca1, ca2: r.ca2, exam: r.exam,
+      recorded_by: user?.id ?? null, recorded_by_name: recordedByName,
+    }));
+    const { error } = await client
+      .from("assessments").upsert(payload, { onConflict: "student_id,subject_id,session_id,term" });
+    if (error) throw new Error("These scores couldn't be saved. Please try again.");
+    return { updated: rows.length, skipped: 0, errors: [] };
   },
 
   async listStaff(): Promise<Staff[]> {
