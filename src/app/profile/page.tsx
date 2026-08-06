@@ -4,8 +4,11 @@ import { useMemo, useRef, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { useOnline } from "@/lib/useOnline";
+import Link from "next/link";
 import { repository } from "@/lib/data/repository";
 import type { CreateStaffInput } from "@/lib/data/repository";
+import { useSetupTasks } from "@/lib/setup/useSetupTasks";
+import type { SetupTaskId } from "@/lib/setup/setupTasks";
 import { ROLE_LABELS, can, termLabel } from "@/lib/domain/constants";
 import { classRank } from "@/lib/classes";
 import { exportToXlsx, readSheetRows } from "@/lib/export";
@@ -56,9 +59,10 @@ const SUBJECTS = [
   "Physical & Health Education",
 ];
 
-type PanelId = "account" | "staff" | "fees" | "roles" | "appearance";
+type PanelId = "setup" | "account" | "staff" | "fees" | "roles" | "appearance";
 
 const PANELS: { id: PanelId; label: string }[] = [
+  { id: "setup", label: "Setup" },
   { id: "account", label: "Account Information" },
   { id: "staff", label: "Staff & Payroll" },
   { id: "fees", label: "Fees & Discount" },
@@ -67,7 +71,7 @@ const PANELS: { id: PanelId; label: string }[] = [
 ];
 
 export default function ProfilePage() {
-  const [panel, setPanel] = useState<PanelId>("account");
+  const [panel, setPanel] = useState<PanelId>("setup");
 
   return (
     <div className="grid gap-5 md:grid-cols-[240px_1fr]">
@@ -94,6 +98,7 @@ export default function ProfilePage() {
       </nav>
 
       <div className="min-w-0">
+        {panel === "setup" && <SetupPanel onGoTo={setPanel} />}
         {panel === "account" && <AccountPanel />}
         {panel === "staff" && <StaffPanel />}
         {panel === "fees" && <FeesPanel />}
@@ -126,6 +131,105 @@ function PanelShell({
       </div>
       {children}
     </section>
+  );
+}
+
+// --- Setup checklist ---------------------------------------------------------
+
+function SetupPanel({ onGoTo }: { onGoTo: (p: PanelId) => void }) {
+  const { role } = useViewer();
+  const { state, loading, dismiss } = useSetupTasks();
+
+  if (!can(role, "edit_fees")) {
+    return (
+      <PanelShell title="Setup">
+        <EmptyState
+          title="Setup is for the Proprietor and Bursar"
+          description="Ask an administrator to finish setting up the school."
+        />
+      </PanelShell>
+    );
+  }
+  if (loading || !state) {
+    return (
+      <PanelShell title="Setup">
+        <LoadingBlock label="Checking your setup…" />
+      </PanelShell>
+    );
+  }
+
+  // Where each task's "fix it" action goes. Fees/bank/staff switch panels in
+  // place; students is a route.
+  const panelFor: Partial<Record<SetupTaskId, PanelId>> = {
+    fees: "fees",
+    bank: "account",
+    staff: "staff",
+  };
+
+  return (
+    <PanelShell
+      title="Setup"
+      subtitle="Finish these to get your school ready to record payments."
+    >
+      <Card>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-ink">Setup progress</span>
+          <span className="money text-sm font-bold text-ink">{state.percentage}%</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-sunken">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${state.percentage}%` }}
+          />
+        </div>
+      </Card>
+
+      <ul className="mt-4 space-y-2.5">
+        {state.tasks.map((t) => (
+          <li
+            key={t.id}
+            className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3.5"
+          >
+            <span
+              className={cn(
+                "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                t.done ? "bg-success text-white" : "border-[1.5px] border-border text-ink-faint",
+              )}
+              aria-hidden
+            >
+              {t.done ? "✓" : ""}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className={cn("font-semibold", t.done ? "text-ink-faint line-through" : "text-ink")}>
+                {t.title}
+              </p>
+              <p className="text-xs text-ink-muted">{t.why}</p>
+            </div>
+            {!t.done &&
+              (panelFor[t.id] ? (
+                <Button variant="ghost" onClick={() => onGoTo(panelFor[t.id]!)}>
+                  Set up
+                </Button>
+              ) : (
+                <Link
+                  href={t.href}
+                  className="inline-flex min-h-11 items-center rounded-lg bg-slate-tint px-4 text-sm font-semibold text-ink"
+                >
+                  Set up
+                </Link>
+              ))}
+            {!t.done && t.dismissible && (
+              <button
+                onClick={() => dismiss(t.id)}
+                className="text-xs font-semibold text-ink-faint hover:text-ink"
+              >
+                Dismiss
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </PanelShell>
   );
 }
 
