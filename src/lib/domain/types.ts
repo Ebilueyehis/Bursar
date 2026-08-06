@@ -227,6 +227,27 @@ export interface AuditEntry {
   createdAt: string; // ISO timestamp
 }
 
+/** A subject the school teaches, e.g. Mathematics. */
+export interface Subject {
+  id: string;
+  schoolId: string;
+  name: string;
+}
+
+/** One student's scores in one subject for a term. Nulls mean "not entered". */
+export interface Assessment {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  subjectId: string;
+  sessionId: string;
+  term: TermName;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+  recordedByName: string;
+}
+
 /** A student with their bill and payment math resolved for a given term. */
 export interface StudentAccount {
   student: Student;

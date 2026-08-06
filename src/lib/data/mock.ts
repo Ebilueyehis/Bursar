@@ -1,9 +1,11 @@
 import type {
+  Assessment,
   AuditEntry,
   Bill,
   Expense,
   FeeItem,
   Income,
+  Subject,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -45,8 +47,10 @@ import type {
   PayrollResult,
   RecordPaymentInput,
   Repository,
+  SaveAssessmentsInput,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
+import { SUBJECT_NAMES } from "@/lib/domain/constants";
 
 /**
  * In-memory implementation of the Repository. Data lives in module arrays that
@@ -63,6 +67,13 @@ const EXPENSES: Expense[] = [];
 const FEE_ITEMS: FeeItem[] = [];
 // Non-fee income store. Seeded empty.
 const INCOME: Income[] = [];
+// Subjects seeded from the default list; assessments start empty.
+const SUBJECTS: Subject[] = SUBJECT_NAMES.map((name, i) => ({
+  id: `subj-${i}`,
+  schoolId: SCHOOL.id,
+  name,
+}));
+const ASSESSMENTS: Assessment[] = [];
 // Money audit trail. In the real backend this is written by DB triggers; the
 // mock simulates it so the Audit tab is populated without a database.
 const AUDIT: AuditEntry[] = [];
@@ -469,6 +480,52 @@ export const mockRepository: Repository = {
     const i = INCOME.findIndex((x) => x.id === id);
     if (i >= 0) INCOME.splice(i, 1);
     pushAudit("deleted", "income", id, "Income entry", null);
+  },
+
+  async listSubjects(): Promise<Subject[]> {
+    await tick();
+    return [...SUBJECTS].sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  async ensureDefaultSubjects(): Promise<void> {
+    await tick();
+    if (SUBJECTS.length === 0) {
+      SUBJECT_NAMES.forEach((name, i) =>
+        SUBJECTS.push({ id: `subj-${i}`, schoolId: SCHOOL.id, name }),
+      );
+    }
+  },
+
+  async saveAssessments(input: SaveAssessmentsInput): Promise<void> {
+    await tick();
+    for (const s of input.scores) {
+      const existing = ASSESSMENTS.find(
+        (a) =>
+          a.studentId === s.studentId &&
+          a.subjectId === input.subjectId &&
+          a.term === input.term &&
+          a.sessionId === SESSION.id,
+      );
+      if (existing) {
+        existing.ca1 = s.ca1;
+        existing.ca2 = s.ca2;
+        existing.exam = s.exam;
+        existing.recordedByName = input.recordedByName;
+      } else {
+        ASSESSMENTS.push({
+          id: `asm-${Date.now()}-${ASSESSMENTS.length}`,
+          schoolId: SCHOOL.id,
+          studentId: s.studentId,
+          subjectId: input.subjectId,
+          sessionId: SESSION.id,
+          term: input.term,
+          ca1: s.ca1,
+          ca2: s.ca2,
+          exam: s.exam,
+          recordedByName: input.recordedByName,
+        });
+      }
+    }
   },
 
   async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {

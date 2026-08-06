@@ -5,6 +5,7 @@ import type {
   Expense,
   FeeItem,
   Income,
+  Subject,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -35,9 +36,11 @@ import type {
   PayrollResult,
   RecordPaymentInput,
   Repository,
+  SaveAssessmentsInput,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { groupLedger } from "@/lib/data/ledger";
+import { SUBJECT_NAMES } from "@/lib/domain/constants";
 
 /**
  * Supabase-backed implementation of the Repository. Uses the browser client, so
@@ -145,6 +148,10 @@ function mapAudit(r: Row): AuditEntry {
     amount: r.amount_kobo == null ? null : Number(r.amount_kobo),
     createdAt: r.created_at as string,
   };
+}
+
+function mapSubject(r: Row): Subject {
+  return { id: r.id as string, schoolId: r.school_id as string, name: r.name as string };
 }
 
 function mapIncome(r: Row): Income {
@@ -769,6 +776,45 @@ export const supabaseRepository: Repository = {
     if (filter?.to) q = q.lte("created_at", `${filter.to}T23:59:59`);
     const { data } = await q;
     return (data ?? []).map(mapAudit);
+  },
+
+  async listSubjects(): Promise<Subject[]> {
+    const { data } = await sb().from("subjects").select("*").order("name");
+    return (data ?? []).map(mapSubject);
+  },
+
+  async ensureDefaultSubjects(): Promise<void> {
+    const client = sb();
+    const { school } = await getContext();
+    if (!school) return;
+    const { count } = await client.from("subjects").select("id", { count: "exact", head: true });
+    if (count && count > 0) return;
+    await client.from("subjects").insert(
+      SUBJECT_NAMES.map((name) => ({ school_id: school.id, name })),
+    );
+  },
+
+  async saveAssessments(input: SaveAssessmentsInput): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    const { data: { user } } = await client.auth.getUser();
+    const payload = input.scores.map((s) => ({
+      school_id: school.id,
+      student_id: s.studentId,
+      subject_id: input.subjectId,
+      session_id: session?.id ?? null,
+      term: input.term,
+      ca1: s.ca1,
+      ca2: s.ca2,
+      exam: s.exam,
+      recorded_by: user?.id ?? null,
+      recorded_by_name: input.recordedByName,
+    }));
+    const { error } = await client
+      .from("assessments")
+      .upsert(payload, { onConflict: "student_id,subject_id,session_id,term" });
+    if (error) throw new Error("These scores couldn't be saved. Please try again.");
   },
 
   async listStaff(): Promise<Staff[]> {

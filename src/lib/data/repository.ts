@@ -15,6 +15,7 @@ import type {
   StaffType,
   Student,
   StudentAccount,
+  Subject,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
@@ -130,6 +131,27 @@ export interface Repository {
 
   /** Read-only money audit trail, newest first. */
   listAuditLog(filter?: DateFilter): Promise<AuditEntry[]>;
+
+  // --- Records: subjects & assessments --------------------------------------
+
+  listSubjects(): Promise<Subject[]>;
+  /** Seed the default subject list if the school has none. Idempotent. */
+  ensureDefaultSubjects(): Promise<void>;
+  /** Upsert scores for one class + subject + term. */
+  saveAssessments(input: SaveAssessmentsInput): Promise<void>;
+}
+
+export interface SaveAssessmentsInput {
+  classId: string;
+  subjectId: string;
+  term: TermName;
+  scores: {
+    studentId: string;
+    ca1: number | null;
+    ca2: number | null;
+    exam: number | null;
+  }[];
+  recordedByName: string;
 }
 
 export interface IncomeRow {
