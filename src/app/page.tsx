@@ -11,6 +11,7 @@ import { exportToXlsx } from "@/lib/export";
 import { formatNaira } from "@/lib/money";
 import type { StudentAccount } from "@/lib/domain/types";
 import { Card, LoadingBlock, Select, cn } from "@/components/ui";
+import { SetupCard } from "@/components/SetupCard";
 import { Avatar } from "@/app/debtors/page";
 import {
   ArrowDownIcon,
@@ -45,6 +46,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      <SetupCard />
       {/* Hero + reconciliation */}
       <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
         <Link
