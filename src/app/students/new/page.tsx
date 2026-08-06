@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { repository } from "@/lib/data/repository";
-import { Button, Field, Input, Select, LoadingBlock } from "@/components/ui";
+import { Button, Field, Input, Select, LoadingBlock, Banner } from "@/components/ui";
 import { BillPicker, draftFromItems } from "@/components/BillPicker";
 import {
   type BillDraft,
@@ -27,6 +27,7 @@ export default function NewStudentPage() {
   const { data: classes } = useAsync(() => repository.listClasses(), []);
   const { actorName, term } = useViewer();
   const { data: feeItems } = useAsync(() => repository.listFeeItems(term), [term]);
+  const hasAnyFeeStructure = (feeItems?.length ?? 0) > 0;
 
   const [form, setForm] = useState({
     firstName: "",
@@ -153,16 +154,27 @@ export default function NewStudentPage() {
         </Field>
 
         {form.classId && (
-          <Field
-            label="Bill"
-            hint={
-              levelItems.length > 0
-                ? `Loaded from the ${selectedClass?.level} fee structure. Untick anything that does not apply.`
-                : "This class has no fee structure yet. Enter the bill items manually."
-            }
-          >
-            <BillPicker value={draft} onChange={setDraft} />
-          </Field>
+          <>
+            {!hasAnyFeeStructure && (
+              <Banner tone="info" title="No fee structure yet">
+                You can type this bill by hand now, or set up your class fees
+                first so bills load automatically.{" "}
+                <Link href="/profile" className="font-semibold text-primary underline">
+                  Set up fees
+                </Link>
+              </Banner>
+            )}
+            <Field
+              label="Bill"
+              hint={
+                levelItems.length > 0
+                  ? `Loaded from the ${selectedClass?.level} fee structure. Untick anything that does not apply.`
+                  : "This class has no fee structure yet. Enter the bill items manually."
+              }
+            >
+              <BillPicker value={draft} onChange={setDraft} />
+            </Field>
+          </>
         )}
 
         <div className="grid grid-cols-2 gap-3">
