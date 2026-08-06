@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import type {
+  AuditEntry,
   Bill,
   Expense,
   FeeItem,
@@ -130,6 +131,19 @@ function mapStaff(r: Row): Staff {
     monthlySalary: Number(r.monthly_salary_kobo ?? 0),
     phone: (r.phone as string) ?? undefined,
     active: (r.active as boolean) ?? true,
+  };
+}
+
+function mapAudit(r: Row): AuditEntry {
+  return {
+    id: r.id as string,
+    actorName: (r.actor_name as string) ?? "Unknown",
+    action: r.action as AuditEntry["action"],
+    entity: r.entity as AuditEntry["entity"],
+    entityId: (r.entity_id as string) ?? "",
+    summary: r.summary as string,
+    amount: r.amount_kobo == null ? null : Number(r.amount_kobo),
+    createdAt: r.created_at as string,
   };
 }
 
@@ -746,6 +760,15 @@ export const supabaseRepository: Repository = {
       });
     }
     return rows.sort((a, b) => b.date.localeCompare(a.date));
+  },
+
+  async listAuditLog(filter?: DateFilter): Promise<AuditEntry[]> {
+    const client = sb();
+    let q = client.from("audit_log").select("*").order("created_at", { ascending: false });
+    if (filter?.from) q = q.gte("created_at", filter.from);
+    if (filter?.to) q = q.lte("created_at", `${filter.to}T23:59:59`);
+    const { data } = await q;
+    return (data ?? []).map(mapAudit);
   },
 
   async listStaff(): Promise<Staff[]> {

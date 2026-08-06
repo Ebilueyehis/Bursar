@@ -226,6 +226,24 @@ create table income (
 
 create index on income (school_id, received_on);
 
+-- Append-only money audit trail. Written ONLY by the log_money_change() trigger
+-- (below), never by the client. No update/delete policy exists, so entries can
+-- be neither forged nor erased through the API.
+create table audit_log (
+  id          uuid primary key default gen_random_uuid(),
+  school_id   uuid not null references schools(id) on delete cascade,
+  actor_id    uuid,
+  actor_name  text,
+  action      text not null,   -- created | edited | deleted
+  entity      text not null,   -- payment | expense | income
+  entity_id   uuid,
+  summary     text not null,
+  amount_kobo bigint,
+  created_at  timestamptz not null default now()
+);
+
+create index on audit_log (school_id, created_at);
+
 -- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
 -- ---------------------------------------------------------------------------
@@ -281,6 +299,7 @@ alter table payments   enable row level security;
 alter table staff      enable row level security;
 alter table expenses   enable row level security;
 alter table income     enable row level security;
+alter table audit_log  enable row level security;
 
 -- Everyone signed in may read rows for their own school. -------------------
 create policy read_same_school on schools
@@ -373,6 +392,12 @@ create policy manage_income on income
   for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
   with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 
+-- Audit trail: readable by anyone in the school; NO write policy exists, so the
+-- client can never insert, edit, or delete an entry. Rows arrive only via the
+-- log_money_change() trigger, which runs as SECURITY DEFINER.
+create policy read_same_school on audit_log
+  for select using (school_id = auth_school_id());
+
 -- ============================================================================
 -- Grants — least privilege for the PostgREST API roles
 -- ============================================================================
@@ -387,6 +412,7 @@ grant select, insert, update, delete on table
   fee_items, bills, bill_lines, payments, staff, expenses, income
   to authenticated;
 grant select on table profiles to authenticated;          -- write blocked: role escalation prevention
+grant select on table audit_log to authenticated;         -- read-only: written by trigger only
 grant select on table student_balances to authenticated;  -- view is read-only
 
 -- service_role is the trusted, server-only admin role (secret key, never in the
@@ -409,3 +435,49 @@ grant execute on function auth_school_id() to authenticated;
 -- profile and its role must happen server-side with the service_role key
 -- (e.g. an admin invite flow or a SECURITY DEFINER signup function), never
 -- from the client.
+
+-- ============================================================================
+-- Money audit trail triggers
+-- ============================================================================
+-- Every insert/update/delete on payments, expenses, and income writes an
+-- audit_log row automatically. SECURITY DEFINER so it can insert into audit_log
+-- (which the client cannot write). Because it fires from the trigger, a client
+-- can never omit or forge an entry. EXECUTE is revoked from public so it cannot
+-- be called directly as an RPC.
+create or replace function log_money_change() returns trigger
+  language plpgsql security definer set search_path = public as $$
+declare
+  v_row     record;
+  v_action  text;
+  v_entity  text := TG_ARGV[0];
+  v_summary text;
+  v_actor   uuid := auth.uid();
+  v_name    text;
+begin
+  if TG_OP = 'DELETE' then v_row := OLD; v_action := 'deleted';
+  elsif TG_OP = 'UPDATE' then v_row := NEW; v_action := 'edited';
+  else v_row := NEW; v_action := 'created';
+  end if;
+
+  if v_entity = 'payment' then v_summary := 'Payment receipt ' || coalesce(v_row.receipt_no, '');
+  elsif v_entity = 'expense' then v_summary := 'Expense to ' || coalesce(v_row.payee, '');
+  else v_summary := 'Income: ' || coalesce(v_row.source, '');
+  end if;
+
+  select full_name into v_name from profiles where id = v_actor;
+
+  insert into audit_log (school_id, actor_id, actor_name, action, entity, entity_id, summary, amount_kobo)
+  values (v_row.school_id, v_actor, v_name, v_action, v_entity, v_row.id, v_summary, v_row.amount_kobo);
+
+  if TG_OP = 'DELETE' then return OLD; end if;
+  return NEW;
+end $$;
+
+revoke execute on function log_money_change() from public;
+
+create trigger audit_payments after insert or update or delete on payments
+  for each row execute function log_money_change('payment');
+create trigger audit_expenses after insert or update or delete on expenses
+  for each row execute function log_money_change('expense');
+create trigger audit_income after insert or update or delete on income
+  for each row execute function log_money_change('income');

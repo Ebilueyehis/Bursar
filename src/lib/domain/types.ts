@@ -215,6 +215,18 @@ export interface LedgerDay {
   net: Kobo; // totalIn − totalOut
 }
 
+/** One immutable line in the money audit trail (who changed what, when). */
+export interface AuditEntry {
+  id: string;
+  actorName: string;
+  action: "created" | "edited" | "deleted";
+  entity: "payment" | "expense" | "income";
+  entityId: string;
+  summary: string;
+  amount: number | null; // kobo
+  createdAt: string; // ISO timestamp
+}
+
 /** A student with their bill and payment math resolved for a given term. */
 export interface StudentAccount {
   student: Student;

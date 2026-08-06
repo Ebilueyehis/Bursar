@@ -1,4 +1,5 @@
 import type {
+  AuditEntry,
   Bill,
   Expense,
   FeeItem,
@@ -62,6 +63,28 @@ const EXPENSES: Expense[] = [];
 const FEE_ITEMS: FeeItem[] = [];
 // Non-fee income store. Seeded empty.
 const INCOME: Income[] = [];
+// Money audit trail. In the real backend this is written by DB triggers; the
+// mock simulates it so the Audit tab is populated without a database.
+const AUDIT: AuditEntry[] = [];
+
+function pushAudit(
+  action: AuditEntry["action"],
+  entity: AuditEntry["entity"],
+  entityId: string,
+  summary: string,
+  amount: number | null,
+): void {
+  AUDIT.push({
+    id: `aud-${Date.now()}-${AUDIT.length}`,
+    actorName: "You",
+    action,
+    entity,
+    entityId,
+    summary,
+    amount,
+    createdAt: new Date().toISOString(),
+  });
+}
 
 function inRange(date: string, filter?: DateFilter): boolean {
   if (filter?.from && date < filter.from) return false;
@@ -222,6 +245,7 @@ export const mockRepository: Repository = {
       note: input.note,
     };
     PAYMENTS.push(payment);
+    pushAudit("created", "payment", payment.id, `Payment receipt ${payment.receiptNo}`, payment.amount);
     return payment;
   },
 
@@ -366,6 +390,7 @@ export const mockRepository: Repository = {
       note: input.note,
     };
     EXPENSES.push(expense);
+    pushAudit("created", "expense", expense.id, `Expense to ${expense.payee}`, expense.amount);
     return expense;
   },
 
@@ -383,6 +408,7 @@ export const mockRepository: Repository = {
       method: patch.method,
       note: patch.note,
     });
+    pushAudit("edited", "expense", existing.id, `Expense to ${existing.payee}`, existing.amount);
     return existing;
   },
 
@@ -390,6 +416,7 @@ export const mockRepository: Repository = {
     await tick();
     const i = EXPENSES.findIndex((e) => e.id === id);
     if (i >= 0) EXPENSES.splice(i, 1);
+    pushAudit("deleted", "expense", id, "Expense", null);
   },
 
   async listIncome(filter?: DateFilter): Promise<Income[]> {
@@ -415,6 +442,7 @@ export const mockRepository: Repository = {
       recordedByName: input.recordedByName,
     };
     INCOME.push(income);
+    pushAudit("created", "income", income.id, `Income: ${income.source}`, income.amount);
     return income;
   },
 
@@ -432,6 +460,7 @@ export const mockRepository: Repository = {
       method: patch.method,
       note: patch.note,
     });
+    pushAudit("edited", "income", existing.id, `Income: ${existing.source}`, existing.amount);
     return existing;
   },
 
@@ -439,6 +468,7 @@ export const mockRepository: Repository = {
     await tick();
     const i = INCOME.findIndex((x) => x.id === id);
     if (i >= 0) INCOME.splice(i, 1);
+    pushAudit("deleted", "income", id, "Income entry", null);
   },
 
   async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {
@@ -733,5 +763,12 @@ export const mockRepository: Repository = {
       throw new Error("New bill total is less than what has already been paid.");
     }
     bill.lines = clean;
+  },
+
+  async listAuditLog(filter?: DateFilter): Promise<AuditEntry[]> {
+    await tick();
+    return AUDIT.filter((a) => inRange(a.createdAt.slice(0, 10), filter)).sort(
+      (x, y) => y.createdAt.localeCompare(x.createdAt),
+    );
   },
 };

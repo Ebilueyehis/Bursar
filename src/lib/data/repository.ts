@@ -1,4 +1,5 @@
 import type {
+  AuditEntry,
   Expense,
   ExpenseCadence,
   FeeItem,
@@ -126,6 +127,9 @@ export interface Repository {
 
   /** Merged money-in view: fee payments + non-fee income, newest first. */
   listIncomeView(filter?: DateFilter): Promise<IncomeRow[]>;
+
+  /** Read-only money audit trail, newest first. */
+  listAuditLog(filter?: DateFilter): Promise<AuditEntry[]>;
 }
 
 export interface IncomeRow {
