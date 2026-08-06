@@ -6,18 +6,13 @@ import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { useOnline } from "@/lib/useOnline";
 import { repository } from "@/lib/data/repository";
-import type { CreateExpenseInput } from "@/lib/data/repository";
 import {
-  EXPENSE_CADENCES,
-  EXPENSE_CATEGORIES,
   PAY_METHODS,
   can,
   termLabel,
 } from "@/lib/domain/constants";
 import { formatNaira, parseNairaToKobo } from "@/lib/money";
 import type {
-  Expense,
-  ExpenseCadence,
   Payment,
   PaymentMethod,
   StudentAccount,
@@ -28,7 +23,6 @@ import {
   Card,
   EmptyState,
   Field,
-  Input,
   LoadingBlock,
   Money,
   NairaInput,
@@ -36,17 +30,9 @@ import {
   ReceiptLine,
   Select,
   TextArea,
-  cn,
 } from "@/components/ui";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CheckIcon,
-  PrintIcon,
-} from "@/components/icons";
+import { CheckIcon, PrintIcon } from "@/components/icons";
 import { formatDay } from "@/lib/dates";
-
-type Segment = "payment" | "expense";
 
 /** Class ordering, Creche (low) to SSS 3 (high). */
 function classRank(label: string): number {
@@ -63,13 +49,12 @@ function classRank(label: string): number {
 
 export default function EntryPage() {
   const { role } = useViewer();
-  const [segment, setSegment] = useState<Segment>("payment");
 
   if (!can(role, "record_payment")) {
     return (
       <EmptyState
         title="New entries are for the Proprietor and Bursar"
-        description="Ask an administrator if you need to record payments or expenses."
+        description="Ask an administrator if you need to record payments."
       />
     );
   }
@@ -77,58 +62,11 @@ export default function EntryPage() {
   return (
     <div className="space-y-5">
       <p className="max-w-2xl text-sm text-ink-muted">
-        Record money in or money out. Payments issue a receipt; expenses save a
-        voucher. Both post to the ledger.
+        Record a fee payment. A receipt is issued and it posts to the ledger. To
+        log an expense or other income, use Payments.
       </p>
-
-      <div className="inline-flex rounded-xl border border-border bg-surface-sunken p-1">
-        <SegmentButton
-          active={segment === "payment"}
-          onClick={() => setSegment("payment")}
-          icon={<ArrowDownIcon width={17} height={17} />}
-        >
-          Payment (In)
-        </SegmentButton>
-        <SegmentButton
-          active={segment === "expense"}
-          onClick={() => setSegment("expense")}
-          icon={<ArrowUpIcon width={17} height={17} />}
-        >
-          Expense (Out)
-        </SegmentButton>
-      </div>
-
-      {segment === "payment" ? <PaymentEntry /> : <ExpenseEntry />}
+      <PaymentEntry />
     </div>
-  );
-}
-
-function SegmentButton({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition",
-        active
-          ? "bg-surface-raised text-ink shadow-sm"
-          : "text-ink-muted hover:text-ink",
-      )}
-    >
-      {icon}
-      {children}
-    </button>
   );
 }
 
@@ -396,199 +334,6 @@ function PaymentSuccess({
             View student
           </Button>
         </Link>
-      </div>
-    </div>
-  );
-}
-
-// --- Expense (money out) -----------------------------------------------------
-
-function ExpenseEntry() {
-  const { actorName } = useViewer();
-  const online = useOnline();
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [payee, setPayee] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState(EXPENSE_CATEGORIES[0]);
-  const [cadence, setCadence] = useState<ExpenseCadence>("one_off");
-  const [amountText, setAmountText] = useState("");
-  const [spentOn, setSpentOn] = useState(today);
-  const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState<Expense | null>(null);
-
-  const amountKobo = parseNairaToKobo(amountText);
-
-  if (done) {
-    return (
-      <ExpenseSuccess
-        expense={done}
-        onAnother={() => {
-          setDone(null);
-          setPayee("");
-          setDescription("");
-          setAmountText("");
-          setNote("");
-        }}
-      />
-    );
-  }
-
-  async function save() {
-    setError(null);
-    if (!online) {
-      setError("You're offline. Expenses are saved only when connected, so nothing is ever lost. Reconnect and try again.");
-      return;
-    }
-    if (!payee.trim() || !description.trim()) {
-      setError("Add who was paid and what it was for.");
-      return;
-    }
-    if (amountKobo === null || amountKobo <= 0) {
-      setError("Enter an amount greater than zero.");
-      return;
-    }
-    const input: CreateExpenseInput = {
-      payee: payee.trim(),
-      description: description.trim(),
-      category: category.trim() || "Miscellaneous",
-      cadence,
-      amountKobo,
-      spentOn,
-      method,
-      note: note.trim() || undefined,
-      recordedByName: actorName,
-    };
-    setSaving(true);
-    try {
-      const created = await repository.createExpense(input);
-      setDone(created);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "This expense couldn't be saved. No money was affected. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="grid gap-5 md:grid-cols-[1fr_360px]">
-      <Card className="space-y-4">
-        {error && <Banner tone="error">{error}</Banner>}
-
-        <Field label="Paid to" hint="Vendor, supplier, or staff name">
-          <Input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="e.g. PHCN, Dangote Cement, Mrs Bello" />
-        </Field>
-        <Field label="What was it for">
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. June electricity bill" />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Category">
-            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="How often" hint="Rent is yearly; salaries monthly">
-            <Select value={cadence} onChange={(e) => setCadence(e.target.value as ExpenseCadence)}>
-              {EXPENSE_CADENCES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount">
-            <NairaInput value={amountText} onValueChange={setAmountText} placeholder="e.g. 25,000" className="text-lg" />
-          </Field>
-          <Field label="Date of spend">
-            <Input type="date" value={spentOn} max={today} onChange={(e) => setSpentOn(e.target.value)} />
-          </Field>
-        </div>
-
-        <Field label="Paid by">
-          <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
-            {PAY_METHODS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Note (optional)">
-          <TextArea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything worth remembering" />
-        </Field>
-
-        <Button onClick={save} disabled={saving || !online} className="w-full">
-          {saving ? "Saving…" : "Save expense"}
-        </Button>
-      </Card>
-
-      {/* Live voucher preview */}
-      <div className="md:sticky md:top-24 md:self-start">
-        <Receipt receiptNo="Voucher preview" date={formatDay(spentOn)}>
-          <ReceiptLine label={payee.trim() || "Paid to"} sub={description.trim() || "What it was for"} />
-          <ReceiptLine label="Category" sub={category} />
-          <ReceiptLine label="Paid by" sub={methodLabel(method)} />
-          <div className="mt-3 border-t border-dashed border-border pt-3">
-            <ReceiptLine
-              label="Amount"
-              amount={formatNaira(amountKobo && amountKobo > 0 ? amountKobo : 0)}
-            />
-          </div>
-        </Receipt>
-      </div>
-    </div>
-  );
-}
-
-function ExpenseSuccess({
-  expense,
-  onAnother,
-}: {
-  expense: Expense;
-  onAnother: () => void;
-}) {
-  return (
-    <div className="mx-auto max-w-lg space-y-5">
-      <div className="flex flex-col items-center pt-4 text-center">
-        <span className="flex size-16 items-center justify-center rounded-full bg-success-tint text-success">
-          <CheckIcon width={34} height={34} />
-        </span>
-        <h2 className="mt-4 font-display text-xl font-bold text-ink">Expense saved</h2>
-        <p className="mt-1 text-sm text-ink-muted">
-          {formatNaira(expense.amount)} to {expense.payee}. A voucher has been
-          saved and posted to the ledger.
-        </p>
-      </div>
-
-      <Receipt receiptNo="Voucher" date={formatDay(expense.spentOn)}>
-        <ReceiptLine label={expense.payee} sub={expense.description} />
-        <ReceiptLine label="Category" sub={expense.category} />
-        <ReceiptLine label="Recorded by" sub={expense.recordedByName} />
-        <div className="mt-3 border-t border-dashed border-border pt-3">
-          <ReceiptLine label="Amount" amount={formatNaira(expense.amount)} />
-        </div>
-      </Receipt>
-
-      <div className="grid grid-cols-2 gap-3 no-print">
-        <Button variant="secondary" onClick={onAnother}>
-          Save another
-        </Button>
-        <Button variant="ghost" onClick={() => window.print()}>
-          <PrintIcon width={18} height={18} />
-          Print
-        </Button>
       </div>
     </div>
   );
