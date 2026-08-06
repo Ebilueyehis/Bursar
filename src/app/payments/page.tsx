@@ -6,6 +6,7 @@ import { can } from "@/lib/domain/constants";
 import { EmptyState, cn } from "@/components/ui";
 import { ChevronRightIcon } from "@/components/icons";
 import { LedgerView } from "@/components/payments/LedgerView";
+import { IncomeView } from "@/components/payments/IncomeView";
 
 type TabId = "ledger" | "income" | "expense" | "audit";
 
@@ -55,7 +56,7 @@ export default function PaymentsPage() {
 
       <div className="min-w-0">
         {tab === "ledger" && <LedgerView />}
-        {tab === "income" && <IncomePlaceholder />}
+        {tab === "income" && <IncomeView />}
         {tab === "expense" && <ExpensePlaceholder />}
         {tab === "audit" && <AuditPlaceholder />}
       </div>
@@ -63,10 +64,7 @@ export default function PaymentsPage() {
   );
 }
 
-// Replaced in Tasks 5-7.
-function IncomePlaceholder() {
-  return <p className="text-sm text-ink-muted">Income view arrives in Task 5.</p>;
-}
+// Replaced in Tasks 6-7.
 function ExpensePlaceholder() {
   return <p className="text-sm text-ink-muted">Expense view arrives in Task 6.</p>;
 }
