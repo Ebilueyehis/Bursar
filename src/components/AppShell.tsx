@@ -14,6 +14,7 @@ import {
   DashboardIcon,
   LedgerIcon,
   PlusIcon,
+  RecordsIcon,
   StudentsIcon,
 } from "@/components/icons";
 
@@ -29,6 +30,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
   { href: "/students", label: "Students", icon: StudentsIcon },
+  { href: "/records", label: "Records", icon: RecordsIcon, permission: "view_grades" },
   { href: "/payments", label: "Payments", icon: LedgerIcon, permission: "view_ledger" },
 ];
 
@@ -36,6 +38,7 @@ const PRIMARY_NAV: NavItem[] = [
 const TITLES: { base: string; title: string }[] = [
   { base: "/students", title: "Students" },
   { base: "/payments", title: "Payments" },
+  { base: "/records", title: "Records" },
   { base: "/entry", title: "New Entry" },
   { base: "/profile", title: "Profile & settings" },
   { base: "/", title: "Dashboard" },
