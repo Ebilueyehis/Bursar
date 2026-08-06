@@ -18,7 +18,8 @@ keeps an audit trail.
 A single **Payments** hub grouping four subsections:
 
 - **Ledger** — the combined daily cashbook (all money in and out).
-- **Income** — log and review non-fee income.
+- **Income** — review **all** money in (fee payments + other income), and log
+  non-fee income.
 - **Expense** — log and review expenses (reuses the existing expense flow).
 - **Audit trail** — a read-only, append-only record of money-entry changes.
 
@@ -42,7 +43,28 @@ payment (both parked to a future version).
 - The whole hub is gated to `view_ledger` (proprietor + bursar). Teachers see
   the same "for the Proprietor and Bursar" empty state the ledger shows today.
 
-## Income model (new)
+## Income section: all money in
+
+The Income tab is the **money-in half of the ledger**: it lists every credit,
+both **student fee payments** (from the existing `payments` table) and **other
+income** (the new `income` table below), newest first, with the same date/type
+filters and Export as the Ledger. Fee-payment rows are read-only and link to the
+student / receipt (they are recorded through New Entry, which issues the
+receipt); other-income rows are editable inline. A "Log income" action on this
+tab creates a non-fee income entry.
+
+So Income is not restricted to non-fee money: fees show here too. Only the
+*logging* action is for non-fee income, because fee payments must go through the
+receipt-issuing flow tied to a student and bill (duplicating that here would
+fork the logic). The shape:
+
+- `listIncomeView(filter?: DateFilter)` returns a merged, date-sorted list of
+  credit rows: `{ kind: "fee" | "other", id, date, source, description, amount,
+  method, recordedByName, studentId? }`. Fee rows come from payments (with the
+  student's name as description and a `studentId` for linking); other rows come
+  from the `income` table.
+
+### Other-income model (new)
 
 A new domain type and table for non-fee cash-in, not tied to a student.
 
