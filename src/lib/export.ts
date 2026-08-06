@@ -9,12 +9,30 @@ export function exportToXlsx(
   filename: string,
   headers: string[],
   rows: (string | number)[][],
-): void {
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+): Promise<void> {
   const name = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
-  XLSX.writeFile(workbook, name);
+  // Building and serializing the workbook is synchronous and CPU-heavy. Run it
+  // after the click has painted so the interaction is not blocked (fixes INP):
+  // yield one animation frame, then a macrotask, before the heavy work. The
+  // download still fires immediately after, within the user-gesture chain.
+  return new Promise<void>((resolve, reject) => {
+    const run = () => {
+      try {
+        const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+        XLSX.writeFile(workbook, name);
+        resolve();
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error("Export failed."));
+      }
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setTimeout(run, 0));
+    } else {
+      setTimeout(run, 0);
+    }
+  });
 }
 
 /** Read the first sheet of an uploaded .xlsx/.csv into keyed rows (header row). */
