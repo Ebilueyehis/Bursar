@@ -143,13 +143,27 @@ No new tables.
   Account Information panel as a new "Bank Account Information" subsection under
   Basic Information. Required-in-spirit (a blocker) but stored nullable so the
   checklist can detect "not yet filled."
-- **Nudge dismissal** — one column on `profiles`: `dismissed_setup_nudges`
-  (text[]), storing dismissed nudge ids per user so dismissal persists across
-  devices. Defaults to empty.
+- **Nudge dismissal** — stored in `localStorage`, keyed by user id
+  (`bursar-setup-dismissed:<userId>` → JSON array of nudge ids). **Not** a
+  `profiles` column: `profiles` is deliberately write-blocked from the client
+  (select-only grant, no update policy) to prevent role self-escalation, and
+  opening it up to store a cosmetic dismiss flag would weaken that invariant.
+  Per-device dismissal is acceptable for an optional nudge that never touches
+  money or blockers.
 
-RLS: bank columns follow the existing `schools` policies; the profiles column
-follows existing per-user profile policies. No new policy surface beyond the
-new columns.
+RLS: the bank columns need a new `schools` UPDATE policy — the table currently
+has only a `read_same_school` (select) policy, so the client cannot write to it.
+Add an update-only policy scoped to the caller's own school and to
+`proprietor`/`bursar`:
+
+```sql
+create policy manage_school on schools
+  for update using (id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (id = auth_school_id() and auth_role() in ('proprietor','bursar'));
+```
+
+No `profiles` policy change (dismissal is client-local). No other new policy
+surface.
 
 ## Permissions
 
