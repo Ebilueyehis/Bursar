@@ -117,6 +117,13 @@ export const mockRepository: Repository = {
     return SCHOOL;
   },
 
+  async updateBankAccount(input): Promise<void> {
+    await tick();
+    SCHOOL.bankAccountNumber = input.accountNumber.trim();
+    SCHOOL.bankAccountName = input.accountName.trim();
+    SCHOOL.bankName = input.bankName.trim();
+  },
+
   async getSession(): Promise<Session> {
     await tick();
     return SESSION;

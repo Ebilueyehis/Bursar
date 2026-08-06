@@ -25,6 +25,10 @@ export interface School {
   phone?: string;
   currentSessionId: string;
   currentTerm: TermName;
+  /** Bank details shown on every invoice and receipt. Filled during setup. */
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  bankName?: string;
 }
 
 export interface Session {

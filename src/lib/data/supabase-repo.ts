@@ -59,6 +59,9 @@ function mapSchool(r: Row): School {
     phone: (r.phone as string) ?? undefined,
     currentSessionId: (r.current_session_id as string) ?? "",
     currentTerm: (r.current_term as TermName) ?? "first",
+    bankAccountNumber: (r.bank_account_number as string) ?? undefined,
+    bankAccountName: (r.bank_account_name as string) ?? undefined,
+    bankName: (r.bank_name as string) ?? undefined,
   };
 }
 
@@ -267,6 +270,20 @@ export const supabaseRepository: Repository = {
     const { session } = await getContext();
     if (!session) throw new Error("No session set up yet.");
     return session;
+  },
+
+  async updateBankAccount(input): Promise<void> {
+    const { school } = await getContext();
+    if (!school) throw new Error("No school found for this account.");
+    const { error } = await sb()
+      .from("schools")
+      .update({
+        bank_account_number: input.accountNumber.trim(),
+        bank_account_name: input.accountName.trim(),
+        bank_name: input.bankName.trim(),
+      })
+      .eq("id", school.id);
+    if (error) throw new Error(error.message);
   },
 
   async listUsers(): Promise<UserProfile[]> {

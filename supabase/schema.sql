@@ -35,6 +35,9 @@ create table schools (
   phone              text,
   current_session_id uuid,
   current_term       term_name not null default 'first',
+  bank_account_number text,
+  bank_account_name   text,
+  bank_name           text,
   created_at         timestamptz not null default now()
 );
 
@@ -262,6 +265,11 @@ alter table expenses   enable row level security;
 -- Everyone signed in may read rows for their own school. -------------------
 create policy read_same_school on schools
   for select using (id = auth_school_id());
+-- Bank details and other school settings: only Proprietor/Bursar may update.
+-- UPDATE only (no insert/delete from the client); schools are created server-side.
+create policy manage_school on schools
+  for update using (id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 create policy read_same_school on profiles
   for select using (school_id = auth_school_id());
 create policy read_same_school on sessions

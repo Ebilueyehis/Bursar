@@ -111,6 +111,15 @@ export interface Repository {
     term: TermName,
     lines: BillLineInput[],
   ): Promise<void>;
+
+  /** Save the school's bank account details (shown on invoices/receipts). */
+  updateBankAccount(input: BankAccountInput): Promise<void>;
+}
+
+export interface BankAccountInput {
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
 }
 
 export interface FeeLineInput {
