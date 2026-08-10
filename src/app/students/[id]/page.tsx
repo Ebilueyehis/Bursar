@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
@@ -43,6 +43,7 @@ import type { Payment, PaymentMethod, StudentAccount, TermName } from "@/lib/dom
 
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { term, role, school } = useViewer();
   const { data: result, loading, reload } = useAsync(
     () => repository.getStudentAccount(params.id, term),
@@ -86,6 +87,7 @@ export default function StudentDetailPage() {
 
   const { student, guardian, className, status, outstanding } = result.account;
   const account = result.account;
+  const isPending = student.status === "pending";
   const statusPill =
     status === "paid" ? "paid" : status === "partial" ? "partial" : "unpaid";
 
@@ -107,6 +109,14 @@ export default function StudentDetailPage() {
           {status === "paid" ? "Paid" : status === "partial" ? "Part-paid" : "Not paid"}
         </StatusPill>
       </div>
+
+      {isPending && can(role, "manage_students") && (
+        <PendingRegistrationCard
+          studentId={student.id}
+          studentName={`${student.firstName} ${student.lastName}`}
+          onChanged={() => { reload(); router.push("/students"); }}
+        />
+      )}
 
       {/* Balance */}
       <Card>
@@ -371,6 +381,87 @@ function RecordTabs({
         </div>
       )}
     </div>
+  );
+}
+
+function PendingRegistrationCard({
+  studentId,
+  studentName,
+  onChanged,
+}: {
+  studentId: string;
+  studentName: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+
+  async function approve() {
+    setError(null);
+    setBusy(true);
+    try {
+      await repository.approveRegistration(studentId);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't approve this registration.");
+      setBusy(false);
+    }
+  }
+
+  async function decline() {
+    setError(null);
+    setBusy(true);
+    try {
+      await repository.declineRegistration(studentId);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't decline this registration.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3 border-warning/40 bg-warning-tint/30">
+      <div>
+        <p className="text-sm font-semibold text-ink">Pending registration</p>
+        <p className="text-sm text-ink-muted">
+          {studentName} is temporary until approved. Approve once payment is
+          confirmed, or decline if they will not be enrolling.
+        </p>
+      </div>
+      {error && <Banner tone="error">{error}</Banner>}
+      {!confirmingDecline ? (
+        <div className="flex gap-3">
+          <Button onClick={approve} disabled={busy} className="flex-1">
+            {busy ? "Approving…" : "Approve Registration"}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => setConfirmingDecline(true)}
+            disabled={busy}
+          >
+            Decline
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2 rounded-lg border border-danger/30 bg-danger-tint p-3">
+          <p className="text-sm text-ink">
+            If no payment has been recorded, this deletes the record entirely.
+            If a payment exists, the record is marked withdrawn and kept for
+            accounting. This cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="danger" onClick={decline} disabled={busy} className="flex-1">
+              {busy ? "Working…" : "Confirm decline"}
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirmingDecline(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
