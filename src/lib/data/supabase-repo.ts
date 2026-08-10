@@ -27,6 +27,7 @@ import type {
   CreateStaffInput,
   CreateStudentInput,
   DashboardStats,
+  DeclineResult,
   DateFilter,
   FeeLineInput,
   FeeStructureImportResult,
@@ -568,6 +569,58 @@ export const supabaseRepository: Repository = {
     }
 
     return mapStudent(student);
+  },
+
+  async approveRegistration(studentId: string): Promise<void> {
+    const { error } = await sb()
+      .from("students")
+      .update({ status: "active" })
+      .eq("id", studentId);
+    if (error) throw new Error("Couldn't approve this registration. Please try again.");
+  },
+
+  async declineRegistration(studentId: string): Promise<DeclineResult> {
+    const client = sb();
+    const { data: student, error: sErr } = await client
+      .from("students")
+      .select("id, guardian_id")
+      .eq("id", studentId)
+      .maybeSingle();
+    if (sErr || !student) throw new Error("Student not found.");
+
+    const { data: bills } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId);
+    const billIds = (bills ?? []).map((b) => b.id as string);
+
+    let hasPayments = false;
+    if (billIds.length > 0) {
+      const { count } = await client
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .in("bill_id", billIds);
+      hasPayments = (count ?? 0) > 0;
+    }
+
+    if (hasPayments) {
+      const { error } = await client
+        .from("students")
+        .update({ status: "withdrawn" })
+        .eq("id", studentId);
+      if (error) throw new Error("Couldn't decline this registration. Please try again.");
+      return { outcome: "withdrawn" };
+    }
+
+    // No payments anywhere for this student: safe to remove entirely.
+    // Delete the student first (bills/bill_lines cascade from it), then the
+    // guardian, which nothing references once the student row is gone.
+    const { error: delErr } = await client.from("students").delete().eq("id", studentId);
+    if (delErr) throw new Error("Couldn't remove this record. Please try again.");
+    if (student.guardian_id) {
+      await client.from("guardians").delete().eq("id", student.guardian_id as string);
+    }
+    return { outcome: "deleted" };
   },
 
   async importStudents(rows: ImportStudentRow[]): Promise<ImportResult> {

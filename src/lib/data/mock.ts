@@ -38,6 +38,7 @@ import type {
   IncomeRow,
   CreateStaffInput,
   DashboardStats,
+  DeclineResult,
   DateFilter,
   FeeLineInput,
   FeeStructureImportResult,
@@ -336,6 +337,34 @@ export const mockRepository: Repository = {
       });
     }
     return student;
+  },
+
+  async approveRegistration(studentId: string): Promise<void> {
+    await tick();
+    const student = STUDENTS.find((s) => s.id === studentId);
+    if (!student) throw new Error("Student not found.");
+    student.status = "active";
+  },
+
+  async declineRegistration(studentId: string): Promise<DeclineResult> {
+    await tick();
+    const student = STUDENTS.find((s) => s.id === studentId);
+    if (!student) throw new Error("Student not found.");
+    const studentBillIds = BILLS.filter((b) => b.studentId === studentId).map((b) => b.id);
+    const hasPayments = PAYMENTS.some((p) => studentBillIds.includes(p.billId));
+    if (hasPayments) {
+      student.status = "withdrawn";
+      return { outcome: "withdrawn" };
+    }
+    // No money trail: safe to remove the student, their bills, and their guardian.
+    for (let i = BILLS.length - 1; i >= 0; i--) {
+      if (BILLS[i].studentId === studentId) BILLS.splice(i, 1);
+    }
+    const idx = STUDENTS.findIndex((s) => s.id === studentId);
+    if (idx >= 0) STUDENTS.splice(idx, 1);
+    const gIdx = GUARDIANS.findIndex((g) => g.id === student.guardianId);
+    if (gIdx >= 0) GUARDIANS.splice(gIdx, 1);
+    return { outcome: "deleted" };
   },
 
   async importStudents(rows: ImportStudentRow[]): Promise<ImportResult> {

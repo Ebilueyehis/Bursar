@@ -126,6 +126,15 @@ export interface Repository {
     discountReason?: string,
   ): Promise<void>;
 
+  /** Convert a pending (pre-registered) student into a fully active one. */
+  approveRegistration(studentId: string): Promise<void>;
+  /**
+   * If the student has no payments recorded anywhere, deletes the student,
+   * guardian, and bill entirely. If any payment exists, sets status to
+   * "withdrawn" instead so the receipt trail is never touched.
+   */
+  declineRegistration(studentId: string): Promise<DeclineResult>;
+
   /** Save the school's bank account details (shown on invoices/receipts). */
   updateBankAccount(input: BankAccountInput): Promise<void>;
 
@@ -335,6 +344,10 @@ export interface CreateStudentInput {
   /** Defaults to "active" when omitted. Set "pending" for a temporary /
    * pre-registered student with a provisional bill. */
   status?: StudentStatus;
+}
+
+export interface DeclineResult {
+  outcome: "deleted" | "withdrawn";
 }
 
 export interface DashboardStats {
