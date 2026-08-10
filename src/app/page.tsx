@@ -130,6 +130,7 @@ export default function DashboardPage() {
           label="Student records"
           value={String(stats.studentCount)}
           sub="active this session"
+          href="/students"
         />
         <StatCard
           tone="warning"
@@ -137,6 +138,7 @@ export default function DashboardPage() {
           label="Receipts issued"
           value={String(stats.receiptCount)}
           sub="every one accounted for"
+          href="/payments?tab=income"
         />
       </div>
 
@@ -176,15 +178,18 @@ function StatCard({
   label,
   value,
   sub,
+  href,
 }: {
   tone: keyof typeof CHIP_TONES;
   icon: React.ReactNode;
   label: string;
   value: string;
   sub: string;
+  /** When set, the whole card is a link — the card stays static without it. */
+  href?: string;
 }) {
-  return (
-    <Card className="flex flex-col gap-1.5">
+  const content = (
+    <>
       <p className="flex items-center gap-2 text-xs font-medium text-ink-muted">
         <span className={cn("grid size-6 place-items-center rounded-md", CHIP_TONES[tone])}>
           {icon}
@@ -193,8 +198,21 @@ function StatCard({
       </p>
       <p className="money text-xl font-bold text-ink">{value}</p>
       <p className="text-xs text-ink-faint">{sub}</p>
-    </Card>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-4 transition hover:border-primary hover:bg-surface-sunken"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return <Card className="flex flex-col gap-1.5">{content}</Card>;
 }
 
 // --- Outstanding payments table ---------------------------------------------

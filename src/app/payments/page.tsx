@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useViewer } from "@/lib/viewer";
 import { can } from "@/lib/domain/constants";
 import { EmptyState, cn } from "@/components/ui";
@@ -19,9 +20,17 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "audit", label: "Audit trail" },
 ];
 
+const TAB_IDS: readonly TabId[] = TABS.map((t) => t.id);
+
+function isTabId(value: string | null): value is TabId {
+  return !!value && (TAB_IDS as readonly string[]).includes(value);
+}
+
 export default function PaymentsPage() {
   const { role } = useViewer();
-  const [tab, setTab] = useState<TabId>("ledger");
+  const params = useSearchParams();
+  const initialTab = params.get("tab");
+  const [tab, setTab] = useState<TabId>(isTabId(initialTab) ? initialTab : "ledger");
 
   if (!can(role, "view_ledger")) {
     return (
