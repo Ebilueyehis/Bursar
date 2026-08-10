@@ -131,14 +131,22 @@ export default function StudentDetailPage() {
               className="text-2xl"
             />
           </div>
-          {can(role, "record_payment") && (
-            <Link href={`/pay?student=${student.id}`}>
-              <Button className="min-h-11 px-4 text-sm">
-                <PlusIcon width={18} height={18} />
-                Record payment
+          <div className="flex items-center gap-2">
+            {isPending && (
+              <Button variant="ghost" onClick={() => printBill(account, school?.name)}>
+                <PrintIcon width={18} height={18} />
+                Print bill
               </Button>
-            </Link>
-          )}
+            )}
+            {can(role, "record_payment") && (
+              <Link href={`/pay?student=${student.id}`}>
+                <Button className="min-h-11 px-4 text-sm">
+                  <PlusIcon width={18} height={18} />
+                  Record payment
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
           <div className="flex justify-between">
@@ -754,6 +762,42 @@ function BackLink() {
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function printBill(account: StudentAccount, schoolName: string | undefined) {
+  const w = window.open("", "_blank", "width=400,height=600");
+  if (!w) return;
+  const rows = account.bill.lines
+    .map((l) => `<tr><td>${esc(l.name)}</td><td>${formatNaira(l.amount)}</td></tr>`)
+    .join("");
+  const discountRow =
+    account.bill.discount > 0
+      ? `<tr><td>Discount${account.bill.discountReason ? ` (${esc(account.bill.discountReason)})` : ""}</td><td>-${formatNaira(account.bill.discount)}</td></tr>`
+      : "";
+  w.document.write(`<!DOCTYPE html><html><head><title>Provisional Bill</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 360px; margin: 20px auto; color: #1b2a3c; }
+  h2 { text-align: center; margin: 0 0 4px; font-size: 18px; }
+  .sub { text-align: center; color: #4a5568; font-size: 12px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 6px 0; border-bottom: 1px solid #dcd6c4; }
+  td:last-child { text-align: right; font-weight: 600; font-family: monospace; }
+  .total { font-size: 20px; text-align: center; margin: 16px 0; font-weight: 700; font-family: monospace; }
+  .footer { text-align: center; font-size: 11px; color: #54677f; margin-top: 20px; }
+  @media print { button { display: none; } }
+</style></head><body>
+<h2>Provisional Bill</h2>
+<p class="sub">${esc(schoolName ?? "")} · ${esc(account.className)}</p>
+<table>
+  <tr><td>Student</td><td>${esc(account.student.firstName)} ${esc(account.student.lastName)}</td></tr>
+  ${rows}
+  ${discountRow}
+</table>
+<p class="total">${formatNaira(account.billTotal)}</p>
+<p class="footer">This bill is provisional until registration is approved.</p>
+<div style="text-align:center;margin-top:12px"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;border:1px solid #1b2a3c;border-radius:6px;background:white">Print</button></div>
+</body></html>`);
+  w.document.close();
 }
 
 function printReceipt(p: Payment, account: StudentAccount) {
