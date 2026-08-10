@@ -491,7 +491,7 @@ export const supabaseRepository: Repository = {
         date_of_birth: input.dateOfBirth ?? null,
         class_id: input.classId,
         guardian_id: guardian.id,
-        status: "active",
+        status: input.status ?? "active",
       })
       .select("*")
       .single();

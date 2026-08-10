@@ -69,7 +69,7 @@ export interface Guardian {
   relationship?: string; // Mother, Father, Guardian...
 }
 
-export type StudentStatus = "active" | "graduated" | "withdrawn";
+export type StudentStatus = "active" | "graduated" | "withdrawn" | "pending";
 
 export interface Student {
   id: string;

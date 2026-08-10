@@ -20,7 +20,7 @@ create extension if not exists "pgcrypto";
 create type user_role   as enum ('proprietor', 'bursar', 'teacher');
 create type term_name   as enum ('first', 'second', 'third');
 create type pay_method  as enum ('cash', 'transfer', 'pos', 'online');
-create type student_status as enum ('active', 'graduated', 'withdrawn');
+create type student_status as enum ('active', 'graduated', 'withdrawn', 'pending');
 create type staff_type      as enum ('teaching', 'non_teaching');
 create type expense_cadence as enum ('one_off', 'monthly', 'yearly');
 

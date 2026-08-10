@@ -297,7 +297,7 @@ export const mockRepository: Repository = {
       dateOfBirth: input.dateOfBirth,
       classId: cls.id,
       guardianId: gId,
-      status: "active",
+      status: input.status ?? "active",
       enrolledOn: new Date().toISOString().slice(0, 10),
     };
     STUDENTS.push(student);

@@ -15,6 +15,7 @@ import type {
   StaffType,
   Student,
   StudentAccount,
+  StudentStatus,
   Subject,
   TermName,
   UserProfile,
@@ -321,6 +322,9 @@ export interface CreateStudentInput {
   guardianName: string;
   guardianPhone: string;
   guardianRelationship?: string;
+  /** Defaults to "active" when omitted. Set "pending" for a temporary /
+   * pre-registered student with a provisional bill. */
+  status?: StudentStatus;
 }
 
 export interface DashboardStats {

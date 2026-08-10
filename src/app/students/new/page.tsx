@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { repository } from "@/lib/data/repository";
-import { Button, Field, Input, Select, LoadingBlock, Banner } from "@/components/ui";
+import { Button, Field, Input, Select, LoadingBlock, Banner, cn } from "@/components/ui";
 import { BillPicker, draftFromItems } from "@/components/BillPicker";
 import {
   type BillDraft,
@@ -41,6 +41,7 @@ export default function NewStudentPage() {
     guardianPhone: "",
     guardianRelationship: "",
   });
+  const [registrationType, setRegistrationType] = useState<"active" | "pending">("active");
   const [draft, setDraft] = useState<BillDraft>(EMPTY_DRAFT);
   const [seededClassId, setSeededClassId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +105,7 @@ export default function NewStudentPage() {
         guardianName: form.guardianName.trim(),
         guardianPhone: form.guardianPhone.trim(),
         guardianRelationship: form.guardianRelationship.trim() || undefined,
+        status: registrationType,
       });
       router.push(`/students/${student.id}`);
     } catch (e) {
@@ -133,6 +135,24 @@ export default function NewStudentPage() {
       </p>
 
       <div className="space-y-4">
+        <div className="inline-flex rounded-xl border border-border bg-surface-sunken p-1">
+          {(["active", "pending"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setRegistrationType(t)}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-semibold transition",
+                registrationType === t
+                  ? "bg-surface-raised text-ink shadow-sm"
+                  : "text-ink-muted hover:text-ink",
+              )}
+            >
+              {t === "active" ? "Register now" : "Temporary / Pre-registered"}
+            </button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="First name">
             <Input value={form.firstName} onChange={set("firstName")} placeholder="Tunde" />
