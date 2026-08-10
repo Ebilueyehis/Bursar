@@ -341,11 +341,12 @@ function UserChip({ name, role }: { name: string; role: Role }) {
 
 function BottomNav() {
   const pathname = usePathname();
-  const { role, actorName } = useViewer();
+  const { role } = useViewer();
   const showEntry = can(role, "record_payment");
   const items = visibleNav(PRIMARY_NAV, role);
 
-  // Dashboard · Students · (+New) · Ledger · Profile — the plus sits centre.
+  // Dashboard · Students · (+New) · Records · Payments — the plus sits centre.
+  // Profile lives only in the top-right header chip, not in this bar.
   const left = items.slice(0, 2);
   const right = items.slice(2);
 
@@ -373,26 +374,6 @@ function BottomNav() {
         {right.map((item) => (
           <BottomLink key={item.href} item={item} pathname={pathname} />
         ))}
-
-        <Link
-          href="/profile"
-          className={cn(
-            "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium",
-            isActive(pathname, "/profile") ? "text-primary" : "text-ink-muted",
-          )}
-        >
-          <span
-            className={cn(
-              "flex size-[22px] items-center justify-center rounded-full text-[9px] font-bold",
-              isActive(pathname, "/profile")
-                ? "bg-primary text-on-primary"
-                : "bg-surface-sunken text-ink-muted",
-            )}
-          >
-            {initials(actorName)}
-          </span>
-          Profile
-        </Link>
       </div>
     </nav>
   );
