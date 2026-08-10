@@ -15,6 +15,7 @@ import type {
   Staff,
   Student,
   StudentAccount,
+  StudentAccountOrBillless,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
@@ -387,7 +388,7 @@ export const supabaseRepository: Repository = {
       .sort((a, b) => a.bill.createdOn.localeCompare(b.bill.createdOn));
   },
 
-  async getStudentAccount(studentId: string, term: TermName): Promise<StudentAccount | null> {
+  async getStudentAccount(studentId: string, term: TermName): Promise<StudentAccountOrBillless | null> {
     const client = sb();
     const { session } = await getContext();
     if (!session) return null;
@@ -404,7 +405,26 @@ export const supabaseRepository: Repository = {
       .eq("session_id", session.id)
       .eq("term", term)
       .maybeSingle();
-    return buildAccount(student, bill ?? undefined, term, session.id);
+    if (!bill) {
+      const cls = student.classes as Row | null;
+      const guardianRow = student.guardians as Row;
+      return {
+        kind: "billless",
+        student: mapStudent(student),
+        className: (cls?.name as string) ?? "-",
+        guardian: {
+          id: guardianRow.id as string,
+          schoolId: guardianRow.school_id as string,
+          fullName: guardianRow.full_name as string,
+          phone: guardianRow.phone as string,
+          altPhone: (guardianRow.alt_phone as string) ?? undefined,
+          email: (guardianRow.email as string) ?? undefined,
+          relationship: (guardianRow.relationship as string) ?? undefined,
+        },
+      };
+    }
+    const account = buildAccount(student, bill, term, session.id);
+    return { kind: "account", account };
   },
 
   async listStudents(): Promise<Student[]> {
@@ -1364,5 +1384,60 @@ export const supabaseRepository: Repository = {
       .from("bill_lines")
       .insert(clean.map((l) => ({ bill_id: bill.id, ...l })));
     if (insErr) throw new Error("Couldn't save the bill items.");
+  },
+
+  async createBillForTerm(
+    studentId: string,
+    term: TermName,
+    billLines: BillLineInput[],
+    discountKobo?: number,
+    discountReason?: string,
+  ): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    const clean = billLines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount_kobo: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+
+    const { data: existing } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("term", term)
+      .maybeSingle();
+
+    let billId = existing?.id as string | undefined;
+    if (billId) {
+      await client
+        .from("bills")
+        .update({
+          discount_kobo: Math.max(0, discountKobo ?? 0),
+          discount_reason: discountReason ?? null,
+        })
+        .eq("id", billId);
+      await client.from("bill_lines").delete().eq("bill_id", billId);
+    } else {
+      const { data: bill, error } = await client
+        .from("bills")
+        .insert({
+          school_id: school.id,
+          student_id: studentId,
+          session_id: session?.id ?? null,
+          term,
+          discount_kobo: Math.max(0, discountKobo ?? 0),
+          discount_reason: discountReason ?? null,
+        })
+        .select("id")
+        .single();
+      if (error || !bill) throw new Error("Couldn't create the bill. Please try again.");
+      billId = bill.id as string;
+    }
+
+    const { error: lineErr } = await client
+      .from("bill_lines")
+      .insert(clean.map((l) => ({ bill_id: billId, ...l })));
+    if (lineErr) throw new Error("Couldn't save the bill items. Please try again.");
   },
 };

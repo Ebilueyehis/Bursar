@@ -248,6 +248,16 @@ export interface Assessment {
   recordedByName: string;
 }
 
+/**
+ * The student detail page's read model: either a fully resolved account, or
+ * a real student with no bill for the viewed term yet (offer Generate Bill).
+ * `getStudentAccount` returns `null` only when the student id itself is
+ * unknown — a missing bill is a distinct, recoverable state.
+ */
+export type StudentAccountOrBillless =
+  | { kind: "account"; account: StudentAccount }
+  | { kind: "billless"; student: Student; className: string; guardian: Guardian };
+
 /** A student with their bill and payment math resolved for a given term. */
 export interface StudentAccount {
   student: Student;

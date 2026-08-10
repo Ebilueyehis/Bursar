@@ -44,13 +44,13 @@ import type { Payment, PaymentMethod, StudentAccount, TermName } from "@/lib/dom
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
   const { term, role, school } = useViewer();
-  const { data: account, loading, reload } = useAsync(
+  const { data: result, loading, reload } = useAsync(
     () => repository.getStudentAccount(params.id, term),
     [params.id, term],
   );
 
-  if (loading && !account) return <LoadingBlock label="Loading student…" />;
-  if (!account)
+  if (loading && !result) return <LoadingBlock label="Loading student…" />;
+  if (!result)
     return (
       <div>
         <BackLink />
@@ -58,7 +58,34 @@ export default function StudentDetailPage() {
       </div>
     );
 
-  const { student, guardian, className, status, outstanding } = account;
+  if (result.kind === "billless") {
+    return (
+      <div className="space-y-4">
+        <BackLink />
+        <div className="flex items-center gap-3">
+          <Avatar first={result.student.firstName} last={result.student.lastName} />
+          <div className="flex-1">
+            <h1 className="font-display text-xl font-bold text-ink">
+              {result.student.firstName} {result.student.lastName}
+            </h1>
+            <p className="text-sm text-ink-muted">
+              {result.className} · {result.student.admissionNo}
+            </p>
+          </div>
+        </div>
+        <EmptyState
+          title="No bill for this term yet"
+          description={`${result.guardian.fullName} · ${result.guardian.phone}`}
+        />
+        {can(role, "manage_students") && (
+          <GenerateBillCard studentId={result.student.id} term={term} onGenerated={reload} />
+        )}
+      </div>
+    );
+  }
+
+  const { student, guardian, className, status, outstanding } = result.account;
+  const account = result.account;
   const statusPill =
     status === "paid" ? "paid" : status === "partial" ? "partial" : "unpaid";
 
@@ -344,6 +371,78 @@ function RecordTabs({
         </div>
       )}
     </div>
+  );
+}
+
+function GenerateBillCard({
+  studentId,
+  term,
+  onGenerated,
+}: {
+  studentId: string;
+  term: TermName;
+  onGenerated: () => void;
+}) {
+  const [draft, setDraft] = useState<BillDraft>({
+    lines: [{ name: "", amountKobo: 0, checked: true }],
+    discountKobo: 0,
+    discountReason: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function generateFromStructure() {
+    setError(null);
+    setSaving(true);
+    try {
+      await repository.generateBill(studentId, term);
+      onGenerated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't generate the bill.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveManualBill() {
+    setError(null);
+    const lines = checkedLines(draft);
+    if (lines.length === 0) return setError("Add at least one item to the bill.");
+    setSaving(true);
+    try {
+      await repository.createBillForTerm(
+        studentId,
+        term,
+        lines.map((l) => ({ name: l.name, amountKobo: l.amountKobo })),
+        draft.discountKobo,
+        draft.discountReason.trim() || undefined,
+      );
+      onGenerated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the bill.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <p className="text-sm font-semibold text-ink">Generate Bill</p>
+      <p className="text-sm text-ink-muted">
+        Use the class fee structure if one is set, or type the bill by hand.
+      </p>
+      {error && <Banner tone="error">{error}</Banner>}
+      <Button onClick={generateFromStructure} disabled={saving} className="w-full">
+        {saving ? "Generating…" : "Generate from class fee structure"}
+      </Button>
+      <div className="border-t border-border pt-3">
+        <p className="mb-2 text-sm font-semibold text-ink">Or enter manually</p>
+        <BillPicker value={draft} onChange={setDraft} />
+        <Button onClick={saveManualBill} disabled={saving} className="mt-3 w-full">
+          {saving ? "Saving…" : "Save bill"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

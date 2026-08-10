@@ -15,6 +15,7 @@ import type {
   StaffType,
   Student,
   StudentAccount,
+  StudentAccountOrBillless,
   StudentStatus,
   Subject,
   TermName,
@@ -48,7 +49,7 @@ export interface Repository {
    */
   listDebtors(term: TermName): Promise<StudentAccount[]>;
 
-  getStudentAccount(studentId: string, term: TermName): Promise<StudentAccount | null>;
+  getStudentAccount(studentId: string, term: TermName): Promise<StudentAccountOrBillless | null>;
 
   listStudents(): Promise<Student[]>;
 
@@ -114,6 +115,15 @@ export interface Repository {
     studentId: string,
     term: TermName,
     lines: BillLineInput[],
+  ): Promise<void>;
+
+  /** Create the first bill for a student + term (the account was billless). */
+  createBillForTerm(
+    studentId: string,
+    term: TermName,
+    billLines: BillLineInput[],
+    discountKobo?: number,
+    discountReason?: string,
   ): Promise<void>;
 
   /** Save the school's bank account details (shown on invoices/receipts). */

@@ -143,7 +143,7 @@ function PaymentEntry() {
         recordedByName: actorName,
       });
       const refreshed = await repository.getStudentAccount(account.student.id, term);
-      setDone({ payment, account: refreshed ?? account });
+      setDone({ payment, account: refreshed?.kind === "account" ? refreshed.account : account });
     } catch (e) {
       setError(e instanceof Error ? e.message : "This payment couldn't be recorded. No money has been affected. Please try again.");
     } finally {

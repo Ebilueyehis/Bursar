@@ -31,7 +31,9 @@ describe("updateBillLines (mock)", () => {
       { name: "Books", amountKobo: 1000000 },
     ];
     await repo.updateBillLines(student.id, "first", lines);
-    const acct = await repo.getStudentAccount(student.id, "first");
+    const result = await repo.getStudentAccount(student.id, "first");
+    expect(result?.kind).toBe("account");
+    const acct = result?.kind === "account" ? result.account : undefined;
     expect(acct?.bill.lines).toEqual(
       lines.map((l) => ({ name: l.name, amount: l.amountKobo })),
     );
@@ -69,7 +71,9 @@ describe("createStudent with billLines + discount (mock)", () => {
       discountReason: "sibling",
       guardianName: "Mr Ade", guardianPhone: "08030000002",
     });
-    const acct = await repo.getStudentAccount(student.id, "first");
+    const result = await repo.getStudentAccount(student.id, "first");
+    expect(result?.kind).toBe("account");
+    const acct = result?.kind === "account" ? result.account : undefined;
     expect(acct?.bill.lines).toHaveLength(2);
     expect(acct?.bill.discount).toBe(1000000);
     expect(acct?.bill.discountReason).toBe("sibling");

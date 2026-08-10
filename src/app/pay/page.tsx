@@ -147,7 +147,7 @@ function PaymentForm({
 }) {
   const { term, actorName } = useViewer();
   const online = useOnline();
-  const { data: account, loading } = useAsync(
+  const { data: result, loading } = useAsync(
     () => repository.getStudentAccount(studentId, term),
     [studentId, term],
   );
@@ -158,13 +158,14 @@ function PaymentForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (loading && !account) return <LoadingBlock label="Loading student…" />;
-  if (!account)
+  if (loading && !result) return <LoadingBlock label="Loading student…" />;
+  if (!result || result.kind === "billless")
     return (
       <Card>
         <p className="text-ink">This student has no bill for {termLabel(term)}.</p>
       </Card>
     );
+  const account = result.account;
 
   const amountKobo = parseNairaToKobo(amountText);
   const wouldOverpay = amountKobo !== null && amountKobo > account.outstanding && account.outstanding > 0;
@@ -190,7 +191,7 @@ function PaymentForm({
         recordedByName: actorName,
       });
       const refreshed = await repository.getStudentAccount(studentId, term);
-      onRecorded(payment, refreshed ?? account!);
+      onRecorded(payment, refreshed?.kind === "account" ? refreshed.account : account);
     } catch (e) {
       setError(e instanceof Error ? e.message : "This payment couldn't be recorded. No money has been affected. Please try again.");
     } finally {

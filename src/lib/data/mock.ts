@@ -15,6 +15,7 @@ import type {
   Staff,
   Student,
   StudentAccount,
+  StudentAccountOrBillless,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
@@ -234,11 +235,15 @@ export const mockRepository: Repository = {
   async getStudentAccount(
     studentId: string,
     term: TermName,
-  ): Promise<StudentAccount | null> {
+  ): Promise<StudentAccountOrBillless | null> {
     await tick();
     const student = STUDENTS.find((s) => s.id === studentId);
     if (!student) return null;
-    return buildAccount(student, term);
+    const account = buildAccount(student, term);
+    if (account) return { kind: "account", account };
+    const cls = classById(student.classId);
+    const guardian = GUARDIANS.find((g) => g.id === student.guardianId)!;
+    return { kind: "billless", student, className: cls?.name ?? "-", guardian };
   },
 
   async listStudents(): Promise<Student[]> {
@@ -963,6 +968,38 @@ export const mockRepository: Repository = {
       throw new Error("New bill total is less than what has already been paid.");
     }
     bill.lines = clean;
+  },
+
+  async createBillForTerm(
+    studentId: string,
+    term: TermName,
+    billLines: BillLineInput[],
+    discountKobo?: number,
+    discountReason?: string,
+  ): Promise<void> {
+    await tick();
+    const clean = billLines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+    const existing = BILLS.find((b) => b.studentId === studentId && b.term === term);
+    if (existing) {
+      existing.lines = clean;
+      existing.discount = Math.max(0, discountKobo ?? 0);
+      existing.discountReason = discountReason;
+      return;
+    }
+    BILLS.push({
+      id: `b-manual-${studentId}-${term}-${Date.now()}`,
+      schoolId: SCHOOL.id,
+      studentId,
+      sessionId: SESSION.id,
+      term,
+      lines: clean,
+      discount: Math.max(0, discountKobo ?? 0),
+      discountReason,
+      createdOn: new Date().toISOString().slice(0, 10),
+    });
   },
 
   async listAuditLog(filter?: DateFilter): Promise<AuditEntry[]> {
