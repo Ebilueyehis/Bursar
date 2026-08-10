@@ -82,12 +82,23 @@ Fix:
 
 ## Students page: Active / Pending filter
 
-`src/app/students/page.tsx` gains a segmented filter, **Active** (default) /
-**Pending (n)**, mirroring the existing owing/all filter pattern already on
-that page. `Repository.listStudents` gains an optional
-`filter?: { status?: StudentStatus }` param so both backends filter at the
-source, not just in the client. Dashboard `studentCount` already filters to
-`status === "active"` — unaffected, no pending student ever inflates it.
+`listStudentAccounts(term)` has no status filter today and is shared by four
+screens: `/students`, `/entry`, `/pay`, `/reports`. It must stay that way for
+`/entry` and `/pay` — recording a payment against a pending student's
+provisional bill is exactly how their registration gets approved, so those
+screens need pending students visible. Adding a repository-level filter would
+either break that or require per-caller opt-in plumbing for no real gain.
+
+Instead, `src/app/students/page.tsx` filters the already-fetched
+`StudentAccount[]` client-side on `account.student.status`, the same way it
+already filters client-side on level and owing/cleared. It gains a segmented
+filter, **Active** (default) / **Pending (n)**, mirroring that existing
+pattern. No repository signature changes for this part. `getDashboardStats`
+already filters its `studentCount` to `status === "active"` — unaffected, no
+pending student ever inflates it. `/reports` is not touched by this spec; a
+pending student's provisional bill can still count toward its per-class
+totals, a pre-existing characteristic of `listStudentAccounts` this feature
+does not change.
 
 ## Approve / Decline (the pending student's detail page)
 
@@ -126,8 +137,8 @@ createBillForTerm(
 ): Promise<void>;
 ```
 
-`CreateStudentInput.status?: StudentStatus` and `listStudents(filter?: { status?: StudentStatus })`
-are additive, backward-compatible signature changes to existing methods.
+`CreateStudentInput.status?: StudentStatus` is an additive, backward-compatible
+change to an existing method's input type.
 
 Implemented in BOTH `mock.ts` and `supabase-repo.ts`.
 
@@ -149,17 +160,20 @@ Implemented in BOTH `mock.ts` and `supabase-repo.ts`.
 
 ## Testing
 
-- Mock: `listStudents` status filtering; `approveRegistration` flips status
-  only; `declineRegistration` hard-deletes when payment-free and soft-declines
-  (sets `withdrawn`) when a payment exists, in both cases leaving other
-  students untouched; `createBillForTerm` creates exactly one bill and is
-  idempotent-safe against being called twice (second call is a normal
-  `updateBillLines`-style replace, not a duplicate bill).
+- Mock: `approveRegistration` flips status only, nothing else on the student
+  or bill changes; `declineRegistration` hard-deletes when payment-free and
+  soft-declines (sets `withdrawn`) when a payment exists, in both cases
+  leaving other students untouched; `createBillForTerm` creates exactly one
+  bill and is idempotent-safe against being called twice (second call is a
+  normal `updateBillLines`-style replace, not a duplicate bill).
 - `getStudentAccount` returns the new billless shape for a real student with
   no bill for the term, and still returns `null` for a genuinely unknown id.
-- Add-student: `status: "pending"` round-trips through `createStudent` and is
-  visible via the Pending filter; `status` omitted still defaults to
-  `"active"` (regression check on existing behavior).
+- Add-student: `status: "pending"` round-trips through `createStudent` and
+  the resulting account's `student.status` is `"pending"`; `status` omitted
+  still defaults to `"active"` (regression check on existing behavior).
+- Students page: given a mixed list of active and pending accounts from
+  `listStudentAccounts`, the Active filter shows only active and the Pending
+  filter shows only pending, with the pending count matching the badge.
 
 ## Voice / style
 
