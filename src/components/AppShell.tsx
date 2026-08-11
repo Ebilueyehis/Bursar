@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useViewer } from "@/lib/viewer";
 import type { Permission } from "@/lib/domain/constants";
 import { ROLE_LABELS, TERMS, can, termLabel } from "@/lib/domain/constants";
@@ -11,6 +11,13 @@ import { cn } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { useOnline } from "@/lib/useOnline";
 import {
+  PAYMENTS_SECTIONS,
+  paymentsHref,
+  paymentsTabFrom,
+  type PaymentsTabId,
+} from "@/components/payments/sections";
+import {
+  ChevronRightIcon,
   DashboardIcon,
   LedgerIcon,
   PlusIcon,
@@ -24,14 +31,26 @@ interface NavItem {
   icon: typeof DashboardIcon;
   /** When set, the item only shows for roles that hold this permission. */
   permission?: Permission;
+  /** Payments opens its four sections rather than navigating straight in. */
+  sections?: boolean;
 }
 
-/** Primary tabs — sidebar on desktop, the outer items of the mobile bottom bar. */
+/**
+ * Primary tabs — sidebar on desktop, the outer items of the mobile bottom bar.
+ * Records sits last: it is the section a proprietor visits at the end of a term,
+ * not the one they open every morning.
+ */
 const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
   { href: "/students", label: "Students", icon: StudentsIcon },
+  {
+    href: "/payments",
+    label: "Payments",
+    icon: LedgerIcon,
+    permission: "view_ledger",
+    sections: true,
+  },
   { href: "/records", label: "Records", icon: RecordsIcon, permission: "view_grades" },
-  { href: "/payments", label: "Payments", icon: LedgerIcon, permission: "view_ledger" },
 ];
 
 /** Screen titles keyed by their route base, longest match wins. */
@@ -122,9 +141,13 @@ function Sidebar() {
       </div>
 
       <nav className="mt-7 flex flex-col gap-0.5">
-        {visibleNav(PRIMARY_NAV, role).map((item) => (
-          <SidebarLink key={item.href} item={item} pathname={pathname} />
-        ))}
+        {visibleNav(PRIMARY_NAV, role).map((item) =>
+          item.sections ? (
+            <SidebarGroup key={item.href} item={item} pathname={pathname} />
+          ) : (
+            <SidebarLink key={item.href} item={item} pathname={pathname} />
+          ),
+        )}
       </nav>
 
       <div className="mt-auto pt-6">
@@ -168,6 +191,82 @@ function SidebarLink({ item, pathname }: { item: NavItem; pathname: string }) {
       <Icon width={18} height={18} />
       {item.label}
     </Link>
+  );
+}
+
+/**
+ * Payments in the sidebar: a heading that expands to its four sections. It opens
+ * itself whenever the Payments screen is on show, so the section in view is
+ * always visible in the sidebar rather than hidden behind a collapsed row.
+ */
+function SidebarGroup({ item, pathname }: { item: NavItem; pathname: string }) {
+  const onSection = isActive(pathname, item.href);
+  const [open, setOpen] = useState(onSection);
+  const Icon = item.icon;
+
+  useEffect(() => {
+    if (onSection) setOpen(true);
+  }, [onSection]);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm transition",
+          onSection
+            ? "border-l-[3px] border-warning bg-white/[0.08] pl-2 font-semibold text-white"
+            : "text-[#C7CCD4] hover:bg-white/[0.05]",
+        )}
+      >
+        <Icon width={18} height={18} />
+        {item.label}
+        <ChevronRightIcon
+          width={15}
+          height={15}
+          className={cn("ml-auto transition-transform", open && "rotate-90")}
+        />
+      </button>
+
+      {open && (
+        <Suspense fallback={<SidebarSections active={null} />}>
+          <SidebarSectionsLive />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+/** Split out so `useSearchParams` sits behind its own boundary. */
+function SidebarSectionsLive() {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const active = isActive(pathname, "/payments")
+    ? paymentsTabFrom(params.get("tab"))
+    : null;
+  return <SidebarSections active={active} />;
+}
+
+function SidebarSections({ active }: { active: PaymentsTabId | null }) {
+  return (
+    <div className="ml-[26px] mt-0.5 flex flex-col gap-0.5 border-l border-white/10 pl-2">
+      {PAYMENTS_SECTIONS.map((s) => (
+        <Link
+          key={s.id}
+          href={paymentsHref(s.id)}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-[13px] transition",
+            active === s.id
+              ? "bg-white/[0.08] font-semibold text-white"
+              : "text-[#9aa4b2] hover:bg-white/[0.05] hover:text-[#C7CCD4]",
+          )}
+        >
+          {s.label}
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -344,52 +443,167 @@ function BottomNav() {
   const { role } = useViewer();
   const showEntry = can(role, "record_payment");
   const items = visibleNav(PRIMARY_NAV, role);
+  const [sheet, setSheet] = useState(false);
 
-  // Dashboard · Students · (+New) · Records · Payments — the plus sits centre.
+  // Dashboard · Students · (+New) · Payments · Records — the plus sits centre.
   // Profile lives only in the top-right header chip, not in this bar.
   const left = items.slice(0, 2);
   const right = items.slice(2);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-      <div className="relative mx-auto flex max-w-3xl items-stretch justify-around">
-        {left.map((item) => (
-          <BottomLink key={item.href} item={item} pathname={pathname} />
-        ))}
+    <>
+      {sheet && (
+        <PaymentsSheet onClose={() => setSheet(false)} pathname={pathname} />
+      )}
 
-        {showEntry ? (
-          <Link
-            href="/entry"
-            aria-label="New Entry"
-            className="relative flex w-16 shrink-0 items-center justify-center"
-          >
-            <span className="absolute -top-6 flex size-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg ring-4 ring-background transition hover:bg-primary-hover">
-              <PlusIcon width={26} height={26} />
-            </span>
-          </Link>
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <div className="relative mx-auto flex max-w-3xl items-stretch justify-around">
+          {left.map((item) => (
+            <BottomLink key={item.href} item={item} pathname={pathname} />
+          ))}
 
-        {right.map((item) => (
-          <BottomLink key={item.href} item={item} pathname={pathname} />
-        ))}
-      </div>
-    </nav>
+          {showEntry ? (
+            <Link
+              href="/entry"
+              aria-label="New Entry"
+              className="relative flex w-16 shrink-0 items-center justify-center"
+            >
+              <span className="absolute -top-6 flex size-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg ring-4 ring-background transition hover:bg-primary-hover">
+                <PlusIcon width={26} height={26} />
+              </span>
+            </Link>
+          ) : (
+            <span className="w-4 shrink-0" />
+          )}
+
+          {right.map((item) =>
+            item.sections ? (
+              <BottomLink
+                key={item.href}
+                item={item}
+                pathname={pathname}
+                onOpenSections={() => setSheet(true)}
+                expanded={sheet}
+              />
+            ) : (
+              <BottomLink key={item.href} item={item} pathname={pathname} />
+            ),
+          )}
+        </div>
+      </nav>
+    </>
   );
 }
 
-function BottomLink({ item, pathname }: { item: NavItem; pathname: string }) {
+/**
+ * The mobile answer to the sidebar dropdown: tapping Payments raises its four
+ * sections rather than dropping the person into whichever one they saw last.
+ */
+function PaymentsSheet({
+  onClose,
+  pathname,
+}: {
+  onClose: () => void;
+  pathname: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-30 md:hidden">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-ink/40"
+      />
+      <div className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-border bg-surface-raised pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 shadow-lg">
+        <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-border" />
+        <p className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+          Payments
+        </p>
+        <Suspense fallback={<SheetSections active={null} onClose={onClose} />}>
+          <SheetSectionsLive pathname={pathname} onClose={onClose} />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function SheetSectionsLive({
+  pathname,
+  onClose,
+}: {
+  pathname: string;
+  onClose: () => void;
+}) {
+  const params = useSearchParams();
+  const active = isActive(pathname, "/payments")
+    ? paymentsTabFrom(params.get("tab"))
+    : null;
+  return <SheetSections active={active} onClose={onClose} />;
+}
+
+function SheetSections({
+  active,
+  onClose,
+}: {
+  active: PaymentsTabId | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="px-2 pb-1">
+      {PAYMENTS_SECTIONS.map((s) => (
+        <Link
+          key={s.id}
+          href={paymentsHref(s.id)}
+          onClick={onClose}
+          className={cn(
+            "flex items-center justify-between rounded-lg px-3 py-3 text-[15px]",
+            active === s.id
+              ? "bg-primary-tint font-semibold text-primary"
+              : "text-ink hover:bg-surface-sunken",
+          )}
+        >
+          {s.label}
+          <ChevronRightIcon width={16} height={16} className="opacity-40" />
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function BottomLink({
+  item,
+  pathname,
+  onOpenSections,
+  expanded,
+}: {
+  item: NavItem;
+  pathname: string;
+  onOpenSections?: () => void;
+  expanded?: boolean;
+}) {
   const active = isActive(pathname, item.href);
   const Icon = item.icon;
+  const className = cn(
+    "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium",
+    active ? "text-primary" : "text-ink-muted",
+  );
+
+  if (onOpenSections) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenSections}
+        aria-expanded={expanded}
+        className={className}
+      >
+        <Icon width={22} height={22} />
+        {item.label}
+      </button>
+    );
+  }
+
   return (
-    <Link
-      href={item.href}
-      className={cn(
-        "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium",
-        active ? "text-primary" : "text-ink-muted",
-      )}
-    >
+    <Link href={item.href} className={className}>
       <Icon width={22} height={22} />
       {item.label}
     </Link>
