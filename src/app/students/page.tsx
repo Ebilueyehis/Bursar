@@ -37,6 +37,7 @@ export default function StudentsPage() {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<"all" | "Primary" | "Secondary">("all");
   const [status, setStatus] = useState<"all" | "owing" | "cleared">("all");
+  const [enrollment, setEnrollment] = useState<"active" | "pending">("active");
   const [sortAsc, setSortAsc] = useState(true);
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
@@ -54,7 +55,8 @@ export default function StudentsPage() {
       const owing = a.outstanding > 0;
       const matchS =
         status === "all" || (status === "owing" ? owing : !owing);
-      return matchQ && matchL && matchS;
+      const matchE = a.student.status === enrollment;
+      return matchQ && matchL && matchS && matchE;
     });
     return filtered.sort((a, b) => {
       const d = classRank(a.className) - classRank(b.className);
@@ -62,7 +64,9 @@ export default function StudentsPage() {
       // Same class: keep names alphabetical for a stable read.
       return a.student.lastName.localeCompare(b.student.lastName);
     });
-  }, [data, query, level, status, sortAsc]);
+  }, [data, query, level, status, enrollment, sortAsc]);
+
+  const pendingCount = (data ?? []).filter((a) => a.student.status === "pending").length;
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, totalPages);
@@ -94,6 +98,23 @@ export default function StudentsPage() {
 
   return (
     <div>
+      <div className="mb-3 inline-flex rounded-xl border border-border bg-surface-sunken p-1">
+        {(["active", "pending"] as const).map((e) => (
+          <button
+            key={e}
+            onClick={() => resetPage(setEnrollment)(e)}
+            className={cn(
+              "rounded-lg px-4 py-2 text-sm font-semibold transition",
+              enrollment === e
+                ? "bg-surface-raised text-ink shadow-sm"
+                : "text-ink-muted hover:text-ink",
+            )}
+          >
+            {e === "active" ? "Active" : `Pending (${pendingCount})`}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 md:min-w-64">
           <Input
@@ -148,11 +169,31 @@ export default function StudentsPage() {
       {loading && !data ? (
         <LoadingBlock label="Loading student records…" />
       ) : !data || data.length === 0 ? (
-        <EmptyState
-          icon={<StudentsIcon width={32} height={32} />}
-          title="No students yet"
-          description="Import a class from a spreadsheet, or add students one at a time."
-        />
+        <div className="flex flex-col items-center gap-4">
+          <EmptyState
+            icon={<StudentsIcon width={32} height={32} />}
+            title="No students yet"
+            description="Import a class from a spreadsheet, or add students one at a time."
+          />
+          {can(role, "manage_students") && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {can(role, "import_students") && (
+                <Link href="/students/import" className="contents">
+                  <Button variant="secondary">
+                    <UploadIcon width={18} height={18} />
+                    Import
+                  </Button>
+                </Link>
+              )}
+              <Link href="/students/new" className="contents">
+                <Button>
+                  <PlusIcon width={18} height={18} />
+                  Add student
+                </Button>
+              </Link>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
           <div className="overflow-x-auto">
@@ -243,6 +284,17 @@ export default function StudentsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {can(role, "manage_students") && (
+        <Link
+          href="/students/new"
+          aria-label="Add student"
+          className="fixed bottom-20 right-4 z-30 inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-on-primary shadow-lg transition hover:bg-primary-hover md:bottom-6 md:right-6"
+        >
+          <PlusIcon width={18} height={18} />
+          Add student
+        </Link>
       )}
     </div>
   );

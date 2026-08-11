@@ -4,13 +4,21 @@ import { useMemo, useRef, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { useOnline } from "@/lib/useOnline";
+import Link from "next/link";
 import { repository } from "@/lib/data/repository";
 import type { CreateStaffInput } from "@/lib/data/repository";
+import { useSetupTasks } from "@/lib/setup/useSetupTasks";
+import type { SetupTaskId } from "@/lib/setup/setupTasks";
 import { ROLE_LABELS, can, termLabel } from "@/lib/domain/constants";
 import { classRank } from "@/lib/classes";
 import { exportToXlsx, readSheetRows } from "@/lib/export";
+import {
+  FEE_TEMPLATE_HEADERS,
+  buildFeeTemplateRows,
+  parseFeeTemplate,
+} from "@/lib/fees/feeTemplate";
 import { formatNaira, parseNairaToKobo } from "@/lib/money";
-import type { FeeItem, Staff, StaffType } from "@/lib/domain/types";
+import type { FeeItem, Staff, StaffType, School } from "@/lib/domain/types";
 import {
   Banner,
   Button,
@@ -51,9 +59,10 @@ const SUBJECTS = [
   "Physical & Health Education",
 ];
 
-type PanelId = "account" | "staff" | "fees" | "roles" | "appearance";
+type PanelId = "setup" | "account" | "staff" | "fees" | "roles" | "appearance";
 
 const PANELS: { id: PanelId; label: string }[] = [
+  { id: "setup", label: "Setup" },
   { id: "account", label: "Account Information" },
   { id: "staff", label: "Staff & Payroll" },
   { id: "fees", label: "Fees & Discount" },
@@ -62,7 +71,7 @@ const PANELS: { id: PanelId; label: string }[] = [
 ];
 
 export default function ProfilePage() {
-  const [panel, setPanel] = useState<PanelId>("account");
+  const [panel, setPanel] = useState<PanelId>("setup");
 
   return (
     <div className="grid gap-5 md:grid-cols-[240px_1fr]">
@@ -89,6 +98,7 @@ export default function ProfilePage() {
       </nav>
 
       <div className="min-w-0">
+        {panel === "setup" && <SetupPanel onGoTo={setPanel} />}
         {panel === "account" && <AccountPanel />}
         {panel === "staff" && <StaffPanel />}
         {panel === "fees" && <FeesPanel />}
@@ -124,10 +134,110 @@ function PanelShell({
   );
 }
 
+// --- Setup checklist ---------------------------------------------------------
+
+function SetupPanel({ onGoTo }: { onGoTo: (p: PanelId) => void }) {
+  const { role } = useViewer();
+  const { state, loading, dismiss } = useSetupTasks();
+
+  if (!can(role, "edit_fees")) {
+    return (
+      <PanelShell title="Setup">
+        <EmptyState
+          title="Setup is for the Proprietor and Bursar"
+          description="Ask an administrator to finish setting up the school."
+        />
+      </PanelShell>
+    );
+  }
+  if (loading || !state) {
+    return (
+      <PanelShell title="Setup">
+        <LoadingBlock label="Checking your setup…" />
+      </PanelShell>
+    );
+  }
+
+  // Where each task's "fix it" action goes. Fees/bank/staff switch panels in
+  // place; students is a route.
+  const panelFor: Partial<Record<SetupTaskId, PanelId>> = {
+    fees: "fees",
+    bank: "account",
+    staff: "staff",
+  };
+
+  return (
+    <PanelShell
+      title="Setup"
+      subtitle="Finish these to get your school ready to record payments."
+    >
+      <Card>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-ink">Setup progress</span>
+          <span className="money text-sm font-bold text-ink">{state.percentage}%</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-sunken">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${state.percentage}%` }}
+          />
+        </div>
+      </Card>
+
+      <ul className="mt-4 space-y-2.5">
+        {state.tasks.map((t) => (
+          <li
+            key={t.id}
+            className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3.5"
+          >
+            <span
+              className={cn(
+                "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                t.done ? "bg-success text-white" : "border-[1.5px] border-border text-ink-faint",
+              )}
+              aria-hidden
+            >
+              {t.done ? "✓" : ""}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className={cn("font-semibold", t.done ? "text-ink-faint line-through" : "text-ink")}>
+                {t.title}
+              </p>
+              <p className="text-xs text-ink-muted">{t.why}</p>
+            </div>
+            {!t.done &&
+              (panelFor[t.id] ? (
+                <Button variant="ghost" onClick={() => onGoTo(panelFor[t.id]!)}>
+                  Set up
+                </Button>
+              ) : (
+                <Link
+                  href={t.href}
+                  className="inline-flex min-h-11 items-center rounded-lg bg-slate-tint px-4 text-sm font-semibold text-ink"
+                >
+                  Set up
+                </Link>
+              ))}
+            {!t.done && t.dismissible && (
+              <button
+                onClick={() => dismiss(t.id)}
+                className="text-xs font-semibold text-ink-faint hover:text-ink"
+              >
+                Dismiss
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </PanelShell>
+  );
+}
+
 // --- Account Information ------------------------------------------------------
 
 function AccountPanel() {
-  const { school, session, actorName, role, term } = useViewer();
+  const { session, actorName, role, term } = useViewer();
+  const { data: school, reload } = useAsync(() => repository.getSchool(), []);
   const rows: { k: string; v: string }[] = [
     { k: "Your name", v: actorName || "-" },
     { k: "Your role", v: ROLE_LABELS[role] },
@@ -153,7 +263,88 @@ function AccountPanel() {
           ))}
         </dl>
       </Card>
+      {can(role, "edit_fees") && (
+        <BankAccountCard school={school} onSaved={reload} />
+      )}
     </PanelShell>
+  );
+}
+
+function BankAccountCard({
+  school,
+  onSaved,
+}: {
+  school: School | null;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    accountNumber: school?.bankAccountNumber ?? "",
+    accountName: school?.bankAccountName ?? "",
+    bankName: school?.bankName ?? "",
+  });
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Seed the form once school data arrives (guarded set-state-during-render).
+  if (!seeded && school) {
+    setSeeded(true);
+    setForm({
+      accountNumber: school.bankAccountNumber ?? "",
+      accountName: school.bankAccountName ?? "",
+      bankName: school.bankName ?? "",
+    });
+  }
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function save() {
+    setError(null);
+    setResult(null);
+    if (!form.accountNumber.trim() || !form.accountName.trim() || !form.bankName.trim()) {
+      return setError("Enter the account number, account name and bank name.");
+    }
+    setSaving(true);
+    try {
+      await repository.updateBankAccount({
+        accountNumber: form.accountNumber,
+        accountName: form.accountName,
+        bankName: form.bankName,
+      });
+      setResult("Bank account details saved.");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="mt-4">
+      <h3 className="font-display text-lg font-bold text-ink">Bank Account Information</h3>
+      <p className="mt-0.5 mb-4 text-sm text-ink-muted">
+        Shown on every invoice and receipt so parents pay into the right account.
+      </p>
+      <div className="space-y-3">
+        <Field label="Account number">
+          <Input value={form.accountNumber} onChange={set("accountNumber")} inputMode="numeric" placeholder="0123456789" />
+        </Field>
+        <Field label="Account name">
+          <Input value={form.accountName} onChange={set("accountName")} placeholder="Tejuosho Group of Schools" />
+        </Field>
+        <Field label="Bank name">
+          <Input value={form.bankName} onChange={set("bankName")} placeholder="First Bank" />
+        </Field>
+        {error && <Banner tone="error">{error}</Banner>}
+        {result && <Banner tone="success">{result}</Banner>}
+        <Button onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save bank details"}
+        </Button>
+      </div>
+    </Card>
   );
 }
 
@@ -442,9 +633,70 @@ function ManualStaffCard({ onAdded }: { onAdded: () => void }) {
 
 function FeesPanel() {
   const { role, term } = useViewer();
-  const { data, loading } = useAsync(() => repository.listFeeItems(term), [term]);
+  const { data, loading, reload } = useAsync(
+    () => repository.listFeeItems(term),
+    [term],
+  );
+  const { data: classes } = useAsync(() => repository.listClasses(), []);
+
+  const [templateErrors, setTemplateErrors] = useState<string[]>([]);
+  const [templateResult, setTemplateResult] = useState<string | null>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const templateInputRef = useRef<HTMLInputElement>(null);
 
   const items = useMemo(() => data ?? [], [data]);
+
+  const levels = useMemo(
+    () =>
+      Array.from(new Set((classes ?? []).map((c) => c.level))).sort(
+        (a, b) => classRank(a) - classRank(b),
+      ),
+    [classes],
+  );
+
+  function downloadTemplate() {
+    const existingByLevel: Record<
+      string,
+      { name: string; amountKobo: number; optional?: boolean }[]
+    > = {};
+    for (const f of items) {
+      (existingByLevel[f.level] ??= []).push({
+        name: f.name,
+        amountKobo: f.amount,
+        optional: f.optional,
+      });
+    }
+    exportToXlsx(
+      "Fee template",
+      [...FEE_TEMPLATE_HEADERS],
+      buildFeeTemplateRows(levels, existingByLevel),
+    );
+  }
+
+  async function onTemplateFile(file: File) {
+    setTemplateErrors([]);
+    setTemplateResult(null);
+    setTemplateBusy(true);
+    try {
+      const sheet = await readSheetRows(file);
+      const { rows, errors } = parseFeeTemplate(sheet, levels);
+      if (errors.length) setTemplateErrors(errors.slice(0, 10));
+      if (rows.length) {
+        const res = await repository.importFeeStructure(term, rows);
+        setTemplateResult(
+          `Updated ${res.levelsUpdated} ${res.levelsUpdated === 1 ? "class" : "classes"}, wrote ${res.itemsWritten} ${res.itemsWritten === 1 ? "item" : "items"}.`,
+        );
+        reload();
+      } else if (!errors.length) {
+        setTemplateErrors(["The file had no rows to import."]);
+      }
+    } catch {
+      setTemplateErrors(["Couldn't read that file. Use the downloaded template."]);
+    } finally {
+      setTemplateBusy(false);
+      if (templateInputRef.current) templateInputRef.current.value = "";
+    }
+  }
   const byLevel = useMemo(() => {
     const map = new Map<string, FeeItem[]>();
     for (const it of items) {
@@ -489,6 +741,55 @@ function FeesPanel() {
         </Button>
       }
     >
+      <Card className="mb-4">
+        <p className="font-semibold text-ink">Fee template</p>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Download the template, set each class&apos;s items and amounts, then
+          upload it. This becomes the default bill for new students.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={downloadTemplate}
+            disabled={levels.length === 0}
+          >
+            Download template
+          </Button>
+          <Button
+            onClick={() => templateInputRef.current?.click()}
+            disabled={templateBusy || levels.length === 0}
+          >
+            {templateBusy ? "Uploading…" : "Upload filled template"}
+          </Button>
+          <input
+            ref={templateInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onTemplateFile(file);
+            }}
+          />
+        </div>
+        {templateResult && (
+          <div className="mt-3">
+            <Banner tone="success">{templateResult}</Banner>
+          </div>
+        )}
+        {templateErrors.length > 0 && (
+          <div className="mt-3">
+            <Banner tone="error" title="Some rows were not imported">
+              <ul className="mt-1 list-disc pl-4">
+                {templateErrors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </Banner>
+          </div>
+        )}
+      </Card>
+
       {loading && !data ? (
         <LoadingBlock label="Loading fees…" />
       ) : byLevel.length === 0 ? (

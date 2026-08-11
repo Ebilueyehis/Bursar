@@ -22,6 +22,13 @@ function base(props: IconProps) {
   };
 }
 
+export const RecordsIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M6 3h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+    <path d="M14 3v5h5M8 13h8M8 17h5" />
+  </svg>
+);
+
 export const DashboardIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <rect x="3" y="3" width="7" height="9" rx="1.5" />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
@@ -24,6 +24,12 @@ import {
   cn,
 } from "@/components/ui";
 import { parseNairaToKobo } from "@/lib/money";
+import { BillPicker } from "@/components/BillPicker";
+import {
+  type BillDraft,
+  checkedLines,
+  validateBillDraft,
+} from "@/lib/fees/billMath";
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -37,14 +43,15 @@ import type { Payment, PaymentMethod, StudentAccount, TermName } from "@/lib/dom
 
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { term, role, school } = useViewer();
-  const { data: account, loading, reload } = useAsync(
+  const { data: result, loading, reload } = useAsync(
     () => repository.getStudentAccount(params.id, term),
     [params.id, term],
   );
 
-  if (loading && !account) return <LoadingBlock label="Loading student…" />;
-  if (!account)
+  if (loading && !result) return <LoadingBlock label="Loading student…" />;
+  if (!result)
     return (
       <div>
         <BackLink />
@@ -52,7 +59,35 @@ export default function StudentDetailPage() {
       </div>
     );
 
-  const { student, guardian, className, status, outstanding } = account;
+  if (result.kind === "billless") {
+    return (
+      <div className="space-y-4">
+        <BackLink />
+        <div className="flex items-center gap-3">
+          <Avatar first={result.student.firstName} last={result.student.lastName} />
+          <div className="flex-1">
+            <h1 className="font-display text-xl font-bold text-ink">
+              {result.student.firstName} {result.student.lastName}
+            </h1>
+            <p className="text-sm text-ink-muted">
+              {result.className} · {result.student.admissionNo}
+            </p>
+          </div>
+        </div>
+        <EmptyState
+          title="No bill for this term yet"
+          description={`${result.guardian.fullName} · ${result.guardian.phone}`}
+        />
+        {can(role, "manage_students") && (
+          <GenerateBillCard studentId={result.student.id} term={term} onGenerated={reload} />
+        )}
+      </div>
+    );
+  }
+
+  const { student, guardian, className, status, outstanding } = result.account;
+  const account = result.account;
+  const isPending = student.status === "pending";
   const statusPill =
     status === "paid" ? "paid" : status === "partial" ? "partial" : "unpaid";
 
@@ -75,6 +110,14 @@ export default function StudentDetailPage() {
         </StatusPill>
       </div>
 
+      {isPending && can(role, "manage_students") && (
+        <PendingRegistrationCard
+          studentId={student.id}
+          studentName={`${student.firstName} ${student.lastName}`}
+          onChanged={() => { reload(); router.push("/students"); }}
+        />
+      )}
+
       {/* Balance */}
       <Card>
         <div className="flex items-end justify-between">
@@ -88,14 +131,22 @@ export default function StudentDetailPage() {
               className="text-2xl"
             />
           </div>
-          {can(role, "record_payment") && (
-            <Link href={`/pay?student=${student.id}`}>
-              <Button className="min-h-11 px-4 text-sm">
-                <PlusIcon width={18} height={18} />
-                Record payment
+          <div className="flex items-center gap-2">
+            {isPending && (
+              <Button variant="ghost" onClick={() => printBill(account, school?.name)}>
+                <PrintIcon width={18} height={18} />
+                Print bill
               </Button>
-            </Link>
-          )}
+            )}
+            {can(role, "record_payment") && (
+              <Link href={`/pay?student=${student.id}`}>
+                <Button className="min-h-11 px-4 text-sm">
+                  <PlusIcon width={18} height={18} />
+                  Record payment
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
           <div className="flex justify-between">
@@ -123,7 +174,7 @@ export default function StudentDetailPage() {
 
 // --- Details / Payments / Receipts tabs -------------------------------------
 
-type RecordTab = "details" | "payments" | "receipts";
+type RecordTab = "details" | "bill" | "payments" | "receipts";
 
 function RecordTabs({
   account,
@@ -144,6 +195,9 @@ function RecordTabs({
   const { student, guardian, outstanding } = account;
   const tabs: { id: RecordTab; label: string }[] = [
     { id: "details", label: "Details" },
+    ...(canEditFees && account.bill.id
+      ? [{ id: "bill" as const, label: "Bill" }]
+      : []),
     { id: "payments", label: "Payments" },
     { id: "receipts", label: "Receipts" },
   ];
@@ -241,6 +295,19 @@ function RecordTabs({
         </div>
       )}
 
+      {tab === "bill" && (
+        <Card>
+          <p className="mb-1 text-sm font-semibold text-ink">
+            Edit bill · {termLabel(term)}
+          </p>
+          <p className="mb-3 text-sm text-ink-muted">
+            Untick items that do not apply, adjust amounts, or add a line. A
+            discount with a reason shows under Fees as a scholarship.
+          </p>
+          <BillEditor account={account} term={term} onSaved={onReload} />
+        </Card>
+      )}
+
       {tab === "payments" && (
         <Card className="p-0">
           {account.payments.length === 0 ? (
@@ -321,6 +388,216 @@ function RecordTabs({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PendingRegistrationCard({
+  studentId,
+  studentName,
+  onChanged,
+}: {
+  studentId: string;
+  studentName: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+
+  async function approve() {
+    setError(null);
+    setBusy(true);
+    try {
+      await repository.approveRegistration(studentId);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't approve this registration.");
+      setBusy(false);
+    }
+  }
+
+  async function decline() {
+    setError(null);
+    setBusy(true);
+    try {
+      await repository.declineRegistration(studentId);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't decline this registration.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3 border-warning/40 bg-warning-tint/30">
+      <div>
+        <p className="text-sm font-semibold text-ink">Pending registration</p>
+        <p className="text-sm text-ink-muted">
+          {studentName} is temporary until approved. Approve once payment is
+          confirmed, or decline if they will not be enrolling.
+        </p>
+      </div>
+      {error && <Banner tone="error">{error}</Banner>}
+      {!confirmingDecline ? (
+        <div className="flex gap-3">
+          <Button onClick={approve} disabled={busy} className="flex-1">
+            {busy ? "Approving…" : "Approve Registration"}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => setConfirmingDecline(true)}
+            disabled={busy}
+          >
+            Decline
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2 rounded-lg border border-danger/30 bg-danger-tint p-3">
+          <p className="text-sm text-ink">
+            If no payment has been recorded, this deletes the record entirely.
+            If a payment exists, the record is marked withdrawn and kept for
+            accounting. This cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="danger" onClick={decline} disabled={busy} className="flex-1">
+              {busy ? "Working…" : "Confirm decline"}
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirmingDecline(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function GenerateBillCard({
+  studentId,
+  term,
+  onGenerated,
+}: {
+  studentId: string;
+  term: TermName;
+  onGenerated: () => void;
+}) {
+  const [draft, setDraft] = useState<BillDraft>({
+    lines: [{ name: "", amountKobo: 0, checked: true }],
+    discountKobo: 0,
+    discountReason: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function generateFromStructure() {
+    setError(null);
+    setSaving(true);
+    try {
+      await repository.generateBill(studentId, term);
+      onGenerated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't generate the bill.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveManualBill() {
+    setError(null);
+    const lines = checkedLines(draft);
+    if (lines.length === 0) return setError("Add at least one item to the bill.");
+    setSaving(true);
+    try {
+      await repository.createBillForTerm(
+        studentId,
+        term,
+        lines.map((l) => ({ name: l.name, amountKobo: l.amountKobo })),
+        draft.discountKobo,
+        draft.discountReason.trim() || undefined,
+      );
+      onGenerated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the bill.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <p className="text-sm font-semibold text-ink">Generate Bill</p>
+      <p className="text-sm text-ink-muted">
+        Use the class fee structure if one is set, or type the bill by hand.
+      </p>
+      {error && <Banner tone="error">{error}</Banner>}
+      <Button onClick={generateFromStructure} disabled={saving} className="w-full">
+        {saving ? "Generating…" : "Generate from class fee structure"}
+      </Button>
+      <div className="border-t border-border pt-3">
+        <p className="mb-2 text-sm font-semibold text-ink">Or enter manually</p>
+        <BillPicker value={draft} onChange={setDraft} />
+        <Button onClick={saveManualBill} disabled={saving} className="mt-3 w-full">
+          {saving ? "Saving…" : "Save bill"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function BillEditor({
+  account,
+  term,
+  onSaved,
+}: {
+  account: StudentAccount;
+  term: TermName;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<BillDraft>({
+    lines: account.bill.lines.map((l) => ({
+      name: l.name,
+      amountKobo: l.amount,
+      checked: true,
+    })),
+    discountKobo: account.bill.discount,
+    discountReason: account.bill.discountReason ?? "",
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setError(null);
+    setSaved(false);
+    const problem = validateBillDraft(draft, account.paid);
+    if (problem) return setError(problem);
+    setSaving(true);
+    try {
+      await repository.updateBillLines(account.student.id, term, checkedLines(draft));
+      await repository.setStudentDiscount(
+        account.student.id,
+        term,
+        draft.discountKobo,
+        draft.discountReason.trim() || undefined,
+      );
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the bill.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {error && <Banner tone="error">{error}</Banner>}
+      {saved && <Banner tone="success">Bill updated.</Banner>}
+      <BillPicker value={draft} onChange={setDraft} paidKobo={account.paid} />
+      <Button onClick={save} disabled={saving} className="w-full">
+        {saving ? "Saving…" : "Save bill"}
+      </Button>
     </div>
   );
 }
@@ -485,6 +762,42 @@ function BackLink() {
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function printBill(account: StudentAccount, schoolName: string | undefined) {
+  const w = window.open("", "_blank", "width=400,height=600");
+  if (!w) return;
+  const rows = account.bill.lines
+    .map((l) => `<tr><td>${esc(l.name)}</td><td>${formatNaira(l.amount)}</td></tr>`)
+    .join("");
+  const discountRow =
+    account.bill.discount > 0
+      ? `<tr><td>Discount${account.bill.discountReason ? ` (${esc(account.bill.discountReason)})` : ""}</td><td>-${formatNaira(account.bill.discount)}</td></tr>`
+      : "";
+  w.document.write(`<!DOCTYPE html><html><head><title>Provisional Bill</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 360px; margin: 20px auto; color: #1b2a3c; }
+  h2 { text-align: center; margin: 0 0 4px; font-size: 18px; }
+  .sub { text-align: center; color: #4a5568; font-size: 12px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 6px 0; border-bottom: 1px solid #dcd6c4; }
+  td:last-child { text-align: right; font-weight: 600; font-family: monospace; }
+  .total { font-size: 20px; text-align: center; margin: 16px 0; font-weight: 700; font-family: monospace; }
+  .footer { text-align: center; font-size: 11px; color: #54677f; margin-top: 20px; }
+  @media print { button { display: none; } }
+</style></head><body>
+<h2>Provisional Bill</h2>
+<p class="sub">${esc(schoolName ?? "")} · ${esc(account.className)}</p>
+<table>
+  <tr><td>Student</td><td>${esc(account.student.firstName)} ${esc(account.student.lastName)}</td></tr>
+  ${rows}
+  ${discountRow}
+</table>
+<p class="total">${formatNaira(account.billTotal)}</p>
+<p class="footer">This bill is provisional until registration is approved.</p>
+<div style="text-align:center;margin-top:12px"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;border:1px solid #1b2a3c;border-radius:6px;background:white">Print</button></div>
+</body></html>`);
+  w.document.close();
 }
 
 function printReceipt(p: Payment, account: StudentAccount) {

@@ -1,8 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
 import type {
+  AuditEntry,
   Bill,
   Expense,
   FeeItem,
+  Income,
+  Subject,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -12,16 +15,22 @@ import type {
   Staff,
   Student,
   StudentAccount,
+  StudentAccountOrBillless,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
 import type {
+  BillLineInput,
   CreateExpenseInput,
+  CreateIncomeInput,
+  IncomeRow,
   CreateStaffInput,
   CreateStudentInput,
   DashboardStats,
+  DeclineResult,
   DateFilter,
   FeeLineInput,
+  FeeStructureImportResult,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
@@ -29,8 +38,17 @@ import type {
   PayrollResult,
   RecordPaymentInput,
   Repository,
+  SaveAssessmentsInput,
+  ClassRecordSummary,
+  SubjectAverageRow,
+  StudentSubjectScore,
+  StudentReport,
+  AssessmentImportResult,
 } from "@/lib/data/repository";
+import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { groupLedger } from "@/lib/data/ledger";
+import { SUBJECT_NAMES } from "@/lib/domain/constants";
+import { componentTotal, gradeFor } from "@/lib/records/grading";
 
 /**
  * Supabase-backed implementation of the Repository. Uses the browser client, so
@@ -45,6 +63,14 @@ function sb() {
   return createClient();
 }
 
+function meanOf(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+}
+function numOrNull(v: unknown): number | null {
+  return v == null ? null : Number(v);
+}
+
 // --- mappers ----------------------------------------------------------------
 
 function mapSchool(r: Row): School {
@@ -56,6 +82,9 @@ function mapSchool(r: Row): School {
     phone: (r.phone as string) ?? undefined,
     currentSessionId: (r.current_session_id as string) ?? "",
     currentTerm: (r.current_term as TermName) ?? "first",
+    bankAccountNumber: (r.bank_account_number as string) ?? undefined,
+    bankAccountName: (r.bank_account_name as string) ?? undefined,
+    bankName: (r.bank_name as string) ?? undefined,
   };
 }
 
@@ -121,6 +150,37 @@ function mapStaff(r: Row): Staff {
     monthlySalary: Number(r.monthly_salary_kobo ?? 0),
     phone: (r.phone as string) ?? undefined,
     active: (r.active as boolean) ?? true,
+  };
+}
+
+function mapAudit(r: Row): AuditEntry {
+  return {
+    id: r.id as string,
+    actorName: (r.actor_name as string) ?? "Unknown",
+    action: r.action as AuditEntry["action"],
+    entity: r.entity as AuditEntry["entity"],
+    entityId: (r.entity_id as string) ?? "",
+    summary: r.summary as string,
+    amount: r.amount_kobo == null ? null : Number(r.amount_kobo),
+    createdAt: r.created_at as string,
+  };
+}
+
+function mapSubject(r: Row): Subject {
+  return { id: r.id as string, schoolId: r.school_id as string, name: r.name as string };
+}
+
+function mapIncome(r: Row): Income {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    source: r.source as string,
+    description: r.description as string,
+    amount: Number(r.amount_kobo),
+    receivedOn: r.received_on as string,
+    method: r.method as Income["method"],
+    note: (r.note as string) ?? undefined,
+    recordedByName: r.recorded_by_name as string,
   };
 }
 
@@ -266,6 +326,20 @@ export const supabaseRepository: Repository = {
     return session;
   },
 
+  async updateBankAccount(input): Promise<void> {
+    const { school } = await getContext();
+    if (!school) throw new Error("No school found for this account.");
+    const { error } = await sb()
+      .from("schools")
+      .update({
+        bank_account_number: input.accountNumber.trim(),
+        bank_account_name: input.accountName.trim(),
+        bank_name: input.bankName.trim(),
+      })
+      .eq("id", school.id);
+    if (error) throw new Error(error.message);
+  },
+
   async listUsers(): Promise<UserProfile[]> {
     const { data } = await sb().from("profiles").select("*");
     return (data ?? []).map((r) => ({
@@ -295,6 +369,7 @@ export const supabaseRepository: Repository = {
       fullyPaidCount: accounts.filter((a) => a.status === "paid").length,
       partialCount: accounts.filter((a) => a.status === "partial").length,
       unpaidCount: accounts.filter((a) => a.status === "unpaid").length,
+      receiptCount: accounts.reduce((s, a) => s + a.payments.length, 0),
     };
   },
 
@@ -314,7 +389,7 @@ export const supabaseRepository: Repository = {
       .sort((a, b) => a.bill.createdOn.localeCompare(b.bill.createdOn));
   },
 
-  async getStudentAccount(studentId: string, term: TermName): Promise<StudentAccount | null> {
+  async getStudentAccount(studentId: string, term: TermName): Promise<StudentAccountOrBillless | null> {
     const client = sb();
     const { session } = await getContext();
     if (!session) return null;
@@ -331,7 +406,26 @@ export const supabaseRepository: Repository = {
       .eq("session_id", session.id)
       .eq("term", term)
       .maybeSingle();
-    return buildAccount(student, bill ?? undefined, term, session.id);
+    if (!bill) {
+      const cls = student.classes as Row | null;
+      const guardianRow = student.guardians as Row;
+      return {
+        kind: "billless",
+        student: mapStudent(student),
+        className: (cls?.name as string) ?? "-",
+        guardian: {
+          id: guardianRow.id as string,
+          schoolId: guardianRow.school_id as string,
+          fullName: guardianRow.full_name as string,
+          phone: guardianRow.phone as string,
+          altPhone: (guardianRow.alt_phone as string) ?? undefined,
+          email: (guardianRow.email as string) ?? undefined,
+          relationship: (guardianRow.relationship as string) ?? undefined,
+        },
+      };
+    }
+    const account = buildAccount(student, bill, term, session.id);
+    return { kind: "account", account };
   },
 
   async listStudents(): Promise<Student[]> {
@@ -418,7 +512,7 @@ export const supabaseRepository: Repository = {
         date_of_birth: input.dateOfBirth ?? null,
         class_id: input.classId,
         guardian_id: guardian.id,
-        status: "active",
+        status: input.status ?? "active",
       })
       .select("*")
       .single();
@@ -441,7 +535,11 @@ export const supabaseRepository: Repository = {
       .eq("level", level);
 
     let lines: { name: string; amount_kobo: number }[] = [];
-    if (feeItems && feeItems.length > 0) {
+    if (input.billLines && input.billLines.length > 0) {
+      lines = input.billLines
+        .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+        .map((l) => ({ name: l.name.trim(), amount_kobo: l.amountKobo }));
+    } else if (feeItems && feeItems.length > 0) {
       lines = feeItems.map((f) => ({
         name: f.name as string,
         amount_kobo: Number(f.amount_kobo),
@@ -458,6 +556,8 @@ export const supabaseRepository: Repository = {
           student_id: student.id,
           session_id: session.id,
           term: school.currentTerm,
+          discount_kobo: Math.max(0, input.discountKobo ?? 0),
+          discount_reason: input.discountReason ?? null,
         })
         .select("id")
         .single();
@@ -469,6 +569,58 @@ export const supabaseRepository: Repository = {
     }
 
     return mapStudent(student);
+  },
+
+  async approveRegistration(studentId: string): Promise<void> {
+    const { error } = await sb()
+      .from("students")
+      .update({ status: "active" })
+      .eq("id", studentId);
+    if (error) throw new Error("Couldn't approve this registration. Please try again.");
+  },
+
+  async declineRegistration(studentId: string): Promise<DeclineResult> {
+    const client = sb();
+    const { data: student, error: sErr } = await client
+      .from("students")
+      .select("id, guardian_id")
+      .eq("id", studentId)
+      .maybeSingle();
+    if (sErr || !student) throw new Error("Student not found.");
+
+    const { data: bills } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId);
+    const billIds = (bills ?? []).map((b) => b.id as string);
+
+    let hasPayments = false;
+    if (billIds.length > 0) {
+      const { count } = await client
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .in("bill_id", billIds);
+      hasPayments = (count ?? 0) > 0;
+    }
+
+    if (hasPayments) {
+      const { error } = await client
+        .from("students")
+        .update({ status: "withdrawn" })
+        .eq("id", studentId);
+      if (error) throw new Error("Couldn't decline this registration. Please try again.");
+      return { outcome: "withdrawn" };
+    }
+
+    // No payments anywhere for this student: safe to remove entirely.
+    // Delete the student first (bills/bill_lines cascade from it), then the
+    // guardian, which nothing references once the student row is gone.
+    const { error: delErr } = await client.from("students").delete().eq("id", studentId);
+    if (delErr) throw new Error("Couldn't remove this record. Please try again.");
+    if (student.guardian_id) {
+      await client.from("guardians").delete().eq("id", student.guardian_id as string);
+    }
+    return { outcome: "deleted" };
   },
 
   async importStudents(rows: ImportStudentRow[]): Promise<ImportResult> {
@@ -589,6 +741,302 @@ export const supabaseRepository: Repository = {
   async deleteExpense(id: string): Promise<void> {
     const { error } = await sb().from("expenses").delete().eq("id", id);
     if (error) throw new Error("This expense couldn't be deleted.");
+  },
+
+  async listIncome(filter?: DateFilter): Promise<Income[]> {
+    const client = sb();
+    let q = client.from("income").select("*").order("received_on", { ascending: false });
+    if (filter?.from) q = q.gte("received_on", filter.from);
+    if (filter?.to) q = q.lte("received_on", filter.to);
+    const { data } = await q;
+    return (data ?? []).map(mapIncome);
+  },
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    if (input.amountKobo <= 0) throw new Error("Enter an amount greater than zero.");
+    const { data: { user } } = await client.auth.getUser();
+    const { data, error } = await client
+      .from("income")
+      .insert({
+        school_id: school.id,
+        session_id: session?.id ?? null,
+        source: input.source,
+        description: input.description,
+        amount_kobo: input.amountKobo,
+        received_on: input.receivedOn,
+        method: input.method,
+        recorded_by: user?.id ?? null,
+        recorded_by_name: input.recordedByName,
+        note: input.note ?? null,
+      })
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("This income couldn't be saved. Please try again.");
+    return mapIncome(data);
+  },
+
+  async updateIncome(id: string, patch: CreateIncomeInput): Promise<Income> {
+    const client = sb();
+    if (patch.amountKobo <= 0) throw new Error("Enter an amount greater than zero.");
+    const { data, error } = await client
+      .from("income")
+      .update({
+        source: patch.source,
+        description: patch.description,
+        amount_kobo: patch.amountKobo,
+        received_on: patch.receivedOn,
+        method: patch.method,
+        note: patch.note ?? null,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error("This income couldn't be updated.");
+    return mapIncome(data);
+  },
+
+  async deleteIncome(id: string): Promise<void> {
+    const { error } = await sb().from("income").delete().eq("id", id);
+    if (error) throw new Error("This income couldn't be deleted.");
+  },
+
+  async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {
+    const client = sb();
+    let pq = client.from("payments").select("*").order("paid_on", { ascending: false });
+    if (filter?.from) pq = pq.gte("paid_on", filter.from);
+    if (filter?.to) pq = pq.lte("paid_on", filter.to);
+    let iq = client.from("income").select("*").order("received_on", { ascending: false });
+    if (filter?.from) iq = iq.gte("received_on", filter.from);
+    if (filter?.to) iq = iq.lte("received_on", filter.to);
+    const [{ data: payments }, { data: incomeRows }] = await Promise.all([pq, iq]);
+
+    const studentIds = [...new Set((payments ?? []).map((p) => p.student_id as string))];
+    const nameById = new Map<string, string>();
+    if (studentIds.length) {
+      const { data: students } = await client
+        .from("students")
+        .select("id,first_name,last_name")
+        .in("id", studentIds);
+      (students ?? []).forEach((s) =>
+        nameById.set(s.id as string, `${s.first_name} ${s.last_name}`),
+      );
+    }
+
+    const rows: IncomeRow[] = [];
+    for (const p of payments ?? []) {
+      const pay = mapPayment(p);
+      rows.push({
+        kind: "fee",
+        id: pay.id,
+        date: pay.paidOn,
+        source: "School fee",
+        description: nameById.get(pay.studentId) ?? "Student",
+        amount: pay.amount,
+        method: pay.method,
+        recordedByName: pay.recordedByName,
+        studentId: pay.studentId,
+      });
+    }
+    for (const row of incomeRows ?? []) {
+      const inc = mapIncome(row);
+      rows.push({
+        kind: "other",
+        id: inc.id,
+        date: inc.receivedOn,
+        source: inc.source,
+        description: inc.description,
+        amount: inc.amount,
+        method: inc.method,
+        recordedByName: inc.recordedByName,
+      });
+    }
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  },
+
+  async listAuditLog(filter?: DateFilter): Promise<AuditEntry[]> {
+    const client = sb();
+    let q = client.from("audit_log").select("*").order("created_at", { ascending: false });
+    if (filter?.from) q = q.gte("created_at", filter.from);
+    if (filter?.to) q = q.lte("created_at", `${filter.to}T23:59:59`);
+    const { data } = await q;
+    return (data ?? []).map(mapAudit);
+  },
+
+  async listSubjects(): Promise<Subject[]> {
+    const { data } = await sb().from("subjects").select("*").order("name");
+    return (data ?? []).map(mapSubject);
+  },
+
+  async ensureDefaultSubjects(): Promise<void> {
+    const client = sb();
+    const { school } = await getContext();
+    if (!school) return;
+    const { count } = await client.from("subjects").select("id", { count: "exact", head: true });
+    if (count && count > 0) return;
+    await client.from("subjects").insert(
+      SUBJECT_NAMES.map((name) => ({ school_id: school.id, name })),
+    );
+  },
+
+  async saveAssessments(input: SaveAssessmentsInput): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    const { data: { user } } = await client.auth.getUser();
+    const payload = input.scores.map((s) => ({
+      school_id: school.id,
+      student_id: s.studentId,
+      subject_id: input.subjectId,
+      session_id: session?.id ?? null,
+      term: input.term,
+      ca1: s.ca1,
+      ca2: s.ca2,
+      exam: s.exam,
+      recorded_by: user?.id ?? null,
+      recorded_by_name: input.recordedByName,
+    }));
+    const { error } = await client
+      .from("assessments")
+      .upsert(payload, { onConflict: "student_id,subject_id,session_id,term" });
+    if (error) throw new Error("These scores couldn't be saved. Please try again.");
+  },
+
+  async listClassRecordSummaries(term: TermName): Promise<ClassRecordSummary[]> {
+    const client = sb();
+    const [{ data: classes }, { data: students }, { data: rows }] = await Promise.all([
+      client.from("classes").select("id,name"),
+      client.from("students").select("id,class_id"),
+      client.from("assessments").select("student_id,ca1,ca2,exam").eq("term", term),
+    ]);
+    return (classes ?? []).map((c) => {
+      const ids = new Set((students ?? []).filter((s) => s.class_id === c.id).map((s) => s.id));
+      const mine = (rows ?? []).filter((r) => ids.has(r.student_id as string));
+      const ca = mine.filter((r) => r.ca1 != null && r.ca2 != null).map((r) => Number(r.ca1) + Number(r.ca2));
+      const ex = mine.filter((r) => r.exam != null).map((r) => Number(r.exam));
+      return {
+        classId: c.id as string,
+        className: c.name as string,
+        studentCount: ids.size,
+        avgCa: meanOf(ca),
+        avgExam: meanOf(ex),
+      };
+    });
+  },
+
+  async listSubjectAverages(classId: string, term: TermName): Promise<SubjectAverageRow[]> {
+    const client = sb();
+    const [{ data: students }, { data: subjects }] = await Promise.all([
+      client.from("students").select("id").eq("class_id", classId),
+      client.from("subjects").select("id,name").order("name"),
+    ]);
+    const ids = (students ?? []).map((s) => s.id as string);
+    if (ids.length === 0) return [];
+    const { data: rows } = await client
+      .from("assessments").select("subject_id,ca1,ca2,exam").eq("term", term).in("student_id", ids);
+    return (subjects ?? []).map((subj) => {
+      const mine = (rows ?? []).filter((r) => r.subject_id === subj.id);
+      const totals = mine
+        .map((r) => componentTotal(numOrNull(r.ca1), numOrNull(r.ca2), numOrNull(r.exam)))
+        .filter((t): t is number => t != null);
+      return {
+        subjectId: subj.id as string,
+        subjectName: subj.name as string,
+        avgCa1: meanOf(mine.filter((r) => r.ca1 != null).map((r) => Number(r.ca1))),
+        avgCa2: meanOf(mine.filter((r) => r.ca2 != null).map((r) => Number(r.ca2))),
+        avgExam: meanOf(mine.filter((r) => r.exam != null).map((r) => Number(r.exam))),
+        avgTotal: meanOf(totals),
+      };
+    }).filter((r) => r.avgTotal != null);
+  },
+
+  async listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]> {
+    const client = sb();
+    const { data: students } = await client
+      .from("students").select("id,first_name,last_name").eq("class_id", classId);
+    const ids = (students ?? []).map((s) => s.id as string);
+    const { data: rows } = ids.length
+      ? await client.from("assessments").select("*").eq("subject_id", subjectId).eq("term", term).in("student_id", ids)
+      : { data: [] as Row[] };
+    const byStudent = new Map((rows ?? []).map((r) => [r.student_id as string, r]));
+    return (students ?? []).map((s) => {
+      const r = byStudent.get(s.id as string);
+      const ca1 = r ? numOrNull(r.ca1) : null;
+      const ca2 = r ? numOrNull(r.ca2) : null;
+      const exam = r ? numOrNull(r.exam) : null;
+      const total = componentTotal(ca1, ca2, exam);
+      return {
+        studentId: s.id as string,
+        studentName: `${s.first_name} ${s.last_name}`,
+        ca1, ca2, exam, total, grade: gradeFor(total),
+      };
+    });
+  },
+
+  async listClassStudentAverages(classId: string, term: TermName) {
+    const client = sb();
+    const { data: students } = await client
+      .from("students").select("id,first_name,last_name").eq("class_id", classId);
+    const ids = (students ?? []).map((s) => s.id as string);
+    const { data: rows } = ids.length
+      ? await client.from("assessments").select("student_id,ca1,ca2,exam").eq("term", term).in("student_id", ids)
+      : { data: [] as Row[] };
+    return (students ?? []).map((s) => {
+      const totals = (rows ?? [])
+        .filter((r) => r.student_id === s.id)
+        .map((r) => componentTotal(numOrNull(r.ca1), numOrNull(r.ca2), numOrNull(r.exam)))
+        .filter((t): t is number => t != null);
+      return { studentId: s.id as string, studentName: `${s.first_name} ${s.last_name}`, average: meanOf(totals) };
+    });
+  },
+
+  async getStudentReport(studentId: string, term: TermName): Promise<StudentReport> {
+    const client = sb();
+    const [{ data: student }, { data: subjects }, { data: rows }] = await Promise.all([
+      client.from("students").select("id,first_name,last_name,class_id").eq("id", studentId).maybeSingle(),
+      client.from("subjects").select("id,name"),
+      client.from("assessments").select("*").eq("student_id", studentId).eq("term", term),
+    ]);
+    let className = "-";
+    if (student?.class_id) {
+      const { data: cls } = await client.from("classes").select("name").eq("id", student.class_id).maybeSingle();
+      className = (cls?.name as string) ?? "-";
+    }
+    const nameOf = new Map((subjects ?? []).map((s) => [s.id as string, s.name as string]));
+    const reportRows = (rows ?? []).map((r) => {
+      const total = componentTotal(numOrNull(r.ca1), numOrNull(r.ca2), numOrNull(r.exam));
+      return {
+        subjectId: r.subject_id as string,
+        subjectName: nameOf.get(r.subject_id as string) ?? "Subject",
+        ca1: numOrNull(r.ca1), ca2: numOrNull(r.ca2), exam: numOrNull(r.exam),
+        total, grade: gradeFor(total),
+      };
+    });
+    const totals = reportRows.map((r) => r.total).filter((t): t is number => t != null);
+    return {
+      studentId,
+      studentName: student ? `${student.first_name} ${student.last_name}` : "Student",
+      className, term, rows: reportRows, overallAverage: meanOf(totals),
+    };
+  },
+
+  async importAssessments(term, rows, recordedByName): Promise<AssessmentImportResult> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    if (rows.length === 0) return { updated: 0, skipped: 0, errors: [] };
+    const { data: { user } } = await client.auth.getUser();
+    const payload = rows.map((r) => ({
+      school_id: school.id, student_id: r.studentId, subject_id: r.subjectId,
+      session_id: session?.id ?? null, term, ca1: r.ca1, ca2: r.ca2, exam: r.exam,
+      recorded_by: user?.id ?? null, recorded_by_name: recordedByName,
+    }));
+    const { error } = await client
+      .from("assessments").upsert(payload, { onConflict: "student_id,subject_id,session_id,term" });
+    if (error) throw new Error("These scores couldn't be saved. Please try again.");
+    return { updated: rows.length, skipped: 0, errors: [] };
   },
 
   async listStaff(): Promise<Staff[]> {
@@ -717,7 +1165,11 @@ export const supabaseRepository: Repository = {
     if (filter?.from) eq = eq.gte("spent_on", filter.from);
     if (filter?.to) eq = eq.lte("spent_on", filter.to);
 
-    const [{ data: payments }, { data: expenses }] = await Promise.all([pq, eq]);
+    let iq = client.from("income").select("*").order("received_on", { ascending: false });
+    if (filter?.from) iq = iq.gte("received_on", filter.from);
+    if (filter?.to) iq = iq.lte("received_on", filter.to);
+
+    const [{ data: payments }, { data: expenses }, { data: incomeRows }] = await Promise.all([pq, eq, iq]);
 
     // Resolve student names for payment rows in one query.
     const studentIds = [...new Set((payments ?? []).map((p) => p.student_id as string))];
@@ -759,6 +1211,20 @@ export const supabaseRepository: Repository = {
         amount: e.amount,
         method: e.method,
         reference: e.id,
+      });
+    }
+    for (const row of incomeRows ?? []) {
+      const inc = mapIncome(row);
+      entries.push({
+        id: inc.id,
+        date: inc.receivedOn,
+        kind: "income",
+        direction: "in",
+        title: inc.source,
+        subtitle: `${inc.description} · ${inc.method}`,
+        amount: inc.amount,
+        method: inc.method,
+        reference: inc.id,
       });
     }
     return groupLedger(entries);
@@ -895,5 +1361,136 @@ export const supabaseRepository: Repository = {
       .update({ discount_kobo: discountKobo, discount_reason: reason ?? null })
       .eq("id", bill.id);
     if (error) throw new Error("Couldn't save the discount.");
+  },
+
+  async importFeeStructure(
+    term: TermName,
+    rows: FeeTemplateRow[],
+  ): Promise<FeeStructureImportResult> {
+    const byLevel = new Map<string, FeeTemplateRow[]>();
+    for (const r of rows) {
+      const list = byLevel.get(r.level) ?? [];
+      list.push(r);
+      byLevel.set(r.level, list);
+    }
+    let itemsWritten = 0;
+    for (const [level, items] of byLevel) {
+      await this.saveFeeStructure(
+        level,
+        term,
+        items.map((i) => ({
+          name: i.name,
+          amountKobo: i.amountKobo,
+          optional: i.optional,
+        })),
+      );
+      itemsWritten += items.length;
+    }
+    return { levelsUpdated: byLevel.size, itemsWritten, skipped: 0 };
+  },
+
+  async updateBillLines(
+    studentId: string,
+    term: TermName,
+    lines: BillLineInput[],
+  ): Promise<void> {
+    const client = sb();
+    const { session } = await getContext();
+    if (!session) throw new Error("School not set up.");
+
+    const { data: bill } = await client
+      .from("bills")
+      .select("id, discount_kobo")
+      .eq("student_id", studentId)
+      .eq("session_id", session.id)
+      .eq("term", term)
+      .maybeSingle();
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+
+    const clean = lines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount_kobo: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+
+    const { data: payments } = await client
+      .from("payments")
+      .select("amount_kobo")
+      .eq("bill_id", bill.id);
+    const paid = (payments ?? []).reduce(
+      (s, p) => s + Number(p.amount_kobo),
+      0,
+    );
+    const newTotal =
+      clean.reduce((s, l) => s + l.amount_kobo, 0) -
+      Number(bill.discount_kobo ?? 0);
+    if (newTotal < paid) {
+      throw new Error("New bill total is less than what has already been paid.");
+    }
+
+    // Snapshot lines are replaced wholesale: clear then insert.
+    const { error: delErr } = await client
+      .from("bill_lines")
+      .delete()
+      .eq("bill_id", bill.id);
+    if (delErr) throw new Error("Couldn't update the bill.");
+    const { error: insErr } = await client
+      .from("bill_lines")
+      .insert(clean.map((l) => ({ bill_id: bill.id, ...l })));
+    if (insErr) throw new Error("Couldn't save the bill items.");
+  },
+
+  async createBillForTerm(
+    studentId: string,
+    term: TermName,
+    billLines: BillLineInput[],
+    discountKobo?: number,
+    discountReason?: string,
+  ): Promise<void> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school) throw new Error("School not set up.");
+    const clean = billLines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount_kobo: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+
+    const { data: existing } = await client
+      .from("bills")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("term", term)
+      .maybeSingle();
+
+    let billId = existing?.id as string | undefined;
+    if (billId) {
+      await client
+        .from("bills")
+        .update({
+          discount_kobo: Math.max(0, discountKobo ?? 0),
+          discount_reason: discountReason ?? null,
+        })
+        .eq("id", billId);
+      await client.from("bill_lines").delete().eq("bill_id", billId);
+    } else {
+      const { data: bill, error } = await client
+        .from("bills")
+        .insert({
+          school_id: school.id,
+          student_id: studentId,
+          session_id: session?.id ?? null,
+          term,
+          discount_kobo: Math.max(0, discountKobo ?? 0),
+          discount_reason: discountReason ?? null,
+        })
+        .select("id")
+        .single();
+      if (error || !bill) throw new Error("Couldn't create the bill. Please try again.");
+      billId = bill.id as string;
+    }
+
+    const { error: lineErr } = await client
+      .from("bill_lines")
+      .insert(clean.map((l) => ({ bill_id: billId, ...l })));
+    if (lineErr) throw new Error("Couldn't save the bill items. Please try again.");
   },
 };

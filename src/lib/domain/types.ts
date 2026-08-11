@@ -25,6 +25,10 @@ export interface School {
   phone?: string;
   currentSessionId: string;
   currentTerm: TermName;
+  /** Bank details shown on every invoice and receipt. Filled during setup. */
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  bankName?: string;
 }
 
 export interface Session {
@@ -65,7 +69,7 @@ export interface Guardian {
   relationship?: string; // Mother, Father, Guardian...
 }
 
-export type StudentStatus = "active" | "graduated" | "withdrawn";
+export type StudentStatus = "active" | "graduated" | "withdrawn" | "pending";
 
 export interface Student {
   id: string;
@@ -176,11 +180,24 @@ export interface Expense {
   note?: string;
 }
 
-/** One line in the daily ledger — a payment (in) or an expense (out). */
+/** Non-fee money the school takes in: donations, grants, sales, rentals. */
+export interface Income {
+  id: string;
+  schoolId: string;
+  source: string;
+  description: string;
+  amount: Kobo;
+  receivedOn: string; // ISO date
+  method: PaymentMethod;
+  note?: string;
+  recordedByName: string;
+}
+
+/** One line in the daily ledger — a payment (in), income (in), or expense (out). */
 export interface LedgerEntry {
   id: string;
   date: string; // ISO date
-  kind: "payment" | "expense";
+  kind: "payment" | "expense" | "income";
   direction: "in" | "out";
   title: string; // student name / payee
   subtitle: string; // receipt no + method / category + cadence
@@ -197,6 +214,49 @@ export interface LedgerDay {
   totalOut: Kobo;
   net: Kobo; // totalIn − totalOut
 }
+
+/** One immutable line in the money audit trail (who changed what, when). */
+export interface AuditEntry {
+  id: string;
+  actorName: string;
+  action: "created" | "edited" | "deleted";
+  entity: "payment" | "expense" | "income";
+  entityId: string;
+  summary: string;
+  amount: number | null; // kobo
+  createdAt: string; // ISO timestamp
+}
+
+/** A subject the school teaches, e.g. Mathematics. */
+export interface Subject {
+  id: string;
+  schoolId: string;
+  name: string;
+}
+
+/** One student's scores in one subject for a term. Nulls mean "not entered". */
+export interface Assessment {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  subjectId: string;
+  sessionId: string;
+  term: TermName;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+  recordedByName: string;
+}
+
+/**
+ * The student detail page's read model: either a fully resolved account, or
+ * a real student with no bill for the viewed term yet (offer Generate Bill).
+ * `getStudentAccount` returns `null` only when the student id itself is
+ * unknown — a missing bill is a distinct, recoverable state.
+ */
+export type StudentAccountOrBillless =
+  | { kind: "account"; account: StudentAccount }
+  | { kind: "billless"; student: Student; className: string; guardian: Guardian };
 
 /** A student with their bill and payment math resolved for a given term. */
 export interface StudentAccount {

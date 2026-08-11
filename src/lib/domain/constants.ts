@@ -72,7 +72,9 @@ export type Permission =
   | "manage_staff"
   | "manage_expenses"
   | "view_ledger"
-  | "view_reports";
+  | "view_reports"
+  | "view_grades"
+  | "manage_grades";
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   proprietor: [
@@ -87,6 +89,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "manage_expenses",
     "view_ledger",
     "view_reports",
+    "view_grades",
+    "manage_grades",
   ],
   bursar: [
     "view_dashboard",
@@ -100,8 +104,16 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "manage_expenses",
     "view_ledger",
     "view_reports",
+    "view_grades",
+    "manage_grades",
   ],
-  teacher: ["view_dashboard", "view_debtors", "manage_students"],
+  teacher: [
+    "view_dashboard",
+    "view_debtors",
+    "manage_students",
+    "view_grades",
+    "manage_grades",
+  ],
 };
 
 /** Common expense categories for a Nigerian school. Seed only — free text. */
@@ -115,6 +127,33 @@ export const EXPENSE_CATEGORIES: string[] = [
   "Feeding",
   "Examination",
   "Miscellaneous",
+];
+
+/** Common non-fee income sources for a Nigerian school. Seed only, free text. */
+export const INCOME_SOURCES: string[] = [
+  "Donation",
+  "Grant",
+  "Uniform sales",
+  "Book sales",
+  "Hall rental",
+  "PTA",
+  "Other",
+];
+
+/** Default subjects seeded for a new school. Editable later. */
+export const SUBJECT_NAMES: string[] = [
+  "Mathematics",
+  "English Language",
+  "Basic Science",
+  "Social Studies",
+  "Civic Education",
+  "Agricultural Science",
+  "Business Studies",
+  "Computer Studies",
+  "Christian Religious Studies",
+  "Islamic Religious Studies",
+  "Physical & Health Education",
+  "Fine Arts",
 ];
 
 export const EXPENSE_CADENCES: { value: ExpenseCadence; label: string }[] = [

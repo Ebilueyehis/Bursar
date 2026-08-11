@@ -2,20 +2,32 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useViewer } from "@/lib/viewer";
 import { useAsync } from "@/lib/useAsync";
 import { repository } from "@/lib/data/repository";
-import { formatNaira } from "@/lib/money";
-import { parseNairaToKobo } from "@/lib/money";
-import { Button, Field, Input, Money, NairaInput, Select, LoadingBlock } from "@/components/ui";
+import { Button, Field, Input, Select, LoadingBlock, Banner, cn } from "@/components/ui";
+import { BillPicker, draftFromItems } from "@/components/BillPicker";
+import {
+  type BillDraft,
+  checkedLines,
+  validateBillDraft,
+} from "@/lib/fees/billMath";
 import { ArrowLeftIcon } from "@/components/icons";
+
+const EMPTY_DRAFT: BillDraft = { lines: [], discountKobo: 0, discountReason: "" };
+const BLANK_LINE_DRAFT: BillDraft = {
+  lines: [{ name: "", amountKobo: 0, checked: true }],
+  discountKobo: 0,
+  discountReason: "",
+};
 
 export default function NewStudentPage() {
   const router = useRouter();
   const { data: classes } = useAsync(() => repository.listClasses(), []);
   const { actorName, term } = useViewer();
   const { data: feeItems } = useAsync(() => repository.listFeeItems(term), [term]);
+  const hasAnyFeeStructure = (feeItems?.length ?? 0) > 0;
 
   const [form, setForm] = useState({
     firstName: "",
@@ -25,30 +37,42 @@ export default function NewStudentPage() {
     dateOfBirth: "",
     religion: "",
     classId: "",
-    termFee: "",
     guardianName: "",
     guardianPhone: "",
     guardianRelationship: "",
   });
+  const [registrationType, setRegistrationType] = useState<"active" | "pending">("active");
+  const [draft, setDraft] = useState<BillDraft>(EMPTY_DRAFT);
+  const [seededClassId, setSeededClassId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // A student cannot be born in the future: cap the date picker at today.
+  const today = new Date().toISOString().slice(0, 10);
 
   const selectedClass = useMemo(
     () => classes?.find((c) => c.id === form.classId),
     [classes, form.classId],
   );
-  const levelFeeTotal = useMemo(() => {
-    if (!selectedClass || !feeItems) return 0;
+  // The class level's fee items, shaped for the picker.
+  const levelItems = useMemo(() => {
+    if (!selectedClass || !feeItems) return [];
     return feeItems
       .filter((f) => f.level === selectedClass.level)
-      .reduce((s, f) => s + f.amount, 0);
+      .map((f) => ({ name: f.name, amountKobo: f.amount, optional: f.optional }));
   }, [selectedClass, feeItems]);
 
-  useEffect(() => {
-    if (levelFeeTotal > 0) {
-      setForm((f) => ({ ...f, termFee: String(levelFeeTotal / 100) }));
-    }
-  }, [levelFeeTotal]);
+  // Re-seed the bill when the chosen class changes (set-state-during-render:
+  // guarded so it converges, and avoids a class change effect).
+  if (form.classId !== seededClassId && feeItems) {
+    setSeededClassId(form.classId);
+    setDraft(
+      !form.classId
+        ? EMPTY_DRAFT
+        : levelItems.length > 0
+          ? draftFromItems(levelItems)
+          : BLANK_LINE_DRAFT,
+    );
+  }
 
   const set = (k: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -61,8 +85,8 @@ export default function NewStudentPage() {
     if (!form.classId) return setError("Choose a class.");
     if (!form.guardianName.trim() || !form.guardianPhone.trim())
       return setError("Enter the guardian's name and phone number.");
-    const termFeeKobo = form.termFee ? parseNairaToKobo(form.termFee) : 0;
-    if (termFeeKobo === null) return setError("Enter a valid term fee, or leave it blank.");
+    const billError = validateBillDraft(draft);
+    if (billError) return setError(billError);
 
     setSaving(true);
     try {
@@ -74,10 +98,14 @@ export default function NewStudentPage() {
         dateOfBirth: form.dateOfBirth || undefined,
         religion: form.religion.trim() || undefined,
         classId: form.classId,
-        termFeeKobo: termFeeKobo ?? 0,
+        termFeeKobo: 0,
+        billLines: checkedLines(draft),
+        discountKobo: draft.discountKobo,
+        discountReason: draft.discountReason.trim() || undefined,
         guardianName: form.guardianName.trim(),
         guardianPhone: form.guardianPhone.trim(),
         guardianRelationship: form.guardianRelationship.trim() || undefined,
+        status: registrationType,
       });
       router.push(`/students/${student.id}`);
     } catch (e) {
@@ -102,11 +130,29 @@ export default function NewStudentPage() {
       </p>
       <h1 className="mb-1 font-display text-2xl font-extrabold text-ink">Add a student</h1>
       <p className="mb-5 text-sm text-ink-muted">
-        Recorded by {actorName}. If this class has a fee structure, it&apos;s
-        applied automatically. Set it under Fees.
+        Recorded by {actorName}. Pick a class to load its fees, then tick the
+        items that apply and adjust amounts for this student.
       </p>
 
       <div className="space-y-4">
+        <div className="inline-flex rounded-xl border border-border bg-surface-sunken p-1">
+          {(["active", "pending"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setRegistrationType(t)}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-semibold transition",
+                registrationType === t
+                  ? "bg-surface-raised text-ink shadow-sm"
+                  : "text-ink-muted hover:text-ink",
+              )}
+            >
+              {t === "active" ? "Register now" : "Temporary / Pre-registered"}
+            </button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="First name">
             <Input value={form.firstName} onChange={set("firstName")} placeholder="Tunde" />
@@ -127,27 +173,40 @@ export default function NewStudentPage() {
           </Select>
         </Field>
 
-        <Field
-          label="Term fee (₦)"
-          hint={
-            levelFeeTotal > 0
-              ? `Auto-filled from ${selectedClass!.level} fee structure (${formatNaira(levelFeeTotal, { kobo_decimals: false })}). You can adjust if needed.`
-              : "No fee structure for this class. Enter the term fee manually."
-          }
-        >
-          <NairaInput value={form.termFee} onValueChange={(v) => setForm((f) => ({ ...f, termFee: v }))} placeholder="e.g. 45,000" />
-        </Field>
+        {form.classId && (
+          <>
+            {!hasAnyFeeStructure && (
+              <Banner tone="info" title="No fee structure yet">
+                You can type this bill by hand now, or set up your class fees
+                first so bills load automatically.{" "}
+                <Link href="/profile" className="font-semibold text-primary underline">
+                  Set up fees
+                </Link>
+              </Banner>
+            )}
+            <Field
+              label="Bill"
+              hint={
+                levelItems.length > 0
+                  ? `Loaded from the ${selectedClass?.level} fee structure. Untick anything that does not apply.`
+                  : "This class has no fee structure yet. Enter the bill items manually."
+              }
+            >
+              <BillPicker value={draft} onChange={setDraft} />
+            </Field>
+          </>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Gender">
             <Select value={form.gender} onChange={set("gender")}>
-              <option value="">Select a class</option>
+              <option value="">Select a gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
             </Select>
           </Field>
           <Field label="Date of birth">
-            <Input type="date" value={form.dateOfBirth} onChange={set("dateOfBirth")} />
+            <Input type="date" max={today} value={form.dateOfBirth} onChange={set("dateOfBirth")} />
           </Field>
         </div>
 

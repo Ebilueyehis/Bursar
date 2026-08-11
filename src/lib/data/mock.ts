@@ -1,7 +1,11 @@
 import type {
+  Assessment,
+  AuditEntry,
   Bill,
   Expense,
   FeeItem,
+  Income,
+  Subject,
   LedgerDay,
   LedgerEntry,
   Payment,
@@ -11,6 +15,7 @@ import type {
   Staff,
   Student,
   StudentAccount,
+  StudentAccountOrBillless,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
@@ -27,11 +32,16 @@ import {
   USERS,
 } from "@/lib/data/seed";
 import type {
+  BillLineInput,
   CreateExpenseInput,
+  CreateIncomeInput,
+  IncomeRow,
   CreateStaffInput,
   DashboardStats,
+  DeclineResult,
   DateFilter,
   FeeLineInput,
+  FeeStructureImportResult,
   ImportResult,
   ImportRowResult,
   ImportStudentRow,
@@ -39,7 +49,16 @@ import type {
   PayrollResult,
   RecordPaymentInput,
   Repository,
+  SaveAssessmentsInput,
+  ClassRecordSummary,
+  SubjectAverageRow,
+  StudentSubjectScore,
+  StudentReport,
+  AssessmentImportResult,
 } from "@/lib/data/repository";
+import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
+import { SUBJECT_NAMES } from "@/lib/domain/constants";
+import { componentTotal, gradeFor } from "@/lib/records/grading";
 
 /**
  * In-memory implementation of the Repository. Data lives in module arrays that
@@ -54,6 +73,37 @@ const STAFF: Staff[] = [];
 const EXPENSES: Expense[] = [];
 // Fee structure store (level + term → line items). Seeded empty.
 const FEE_ITEMS: FeeItem[] = [];
+// Non-fee income store. Seeded empty.
+const INCOME: Income[] = [];
+// Subjects seeded from the default list; assessments start empty.
+const SUBJECTS: Subject[] = SUBJECT_NAMES.map((name, i) => ({
+  id: `subj-${i}`,
+  schoolId: SCHOOL.id,
+  name,
+}));
+const ASSESSMENTS: Assessment[] = [];
+// Money audit trail. In the real backend this is written by DB triggers; the
+// mock simulates it so the Audit tab is populated without a database.
+const AUDIT: AuditEntry[] = [];
+
+function pushAudit(
+  action: AuditEntry["action"],
+  entity: AuditEntry["entity"],
+  entityId: string,
+  summary: string,
+  amount: number | null,
+): void {
+  AUDIT.push({
+    id: `aud-${Date.now()}-${AUDIT.length}`,
+    actorName: "You",
+    action,
+    entity,
+    entityId,
+    summary,
+    amount,
+    createdAt: new Date().toISOString(),
+  });
+}
 
 function inRange(date: string, filter?: DateFilter): boolean {
   if (filter?.from && date < filter.from) return false;
@@ -108,10 +158,23 @@ function buildAccount(student: Student, term: TermName): StudentAccount | null {
 // Simulate a little latency so loading states are real in the prototype.
 const tick = () => new Promise<void>((r) => setTimeout(r, 120));
 
+/** Mean rounded to a whole number, or null for an empty list. */
+function mean(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+}
+
 export const mockRepository: Repository = {
   async getSchool(): Promise<School> {
     await tick();
     return SCHOOL;
+  },
+
+  async updateBankAccount(input): Promise<void> {
+    await tick();
+    SCHOOL.bankAccountNumber = input.accountNumber.trim();
+    SCHOOL.bankAccountName = input.accountName.trim();
+    SCHOOL.bankName = input.bankName.trim();
   },
 
   async getSession(): Promise<Session> {
@@ -147,6 +210,7 @@ export const mockRepository: Repository = {
       fullyPaidCount: accounts.filter((a) => a.status === "paid").length,
       partialCount: accounts.filter((a) => a.status === "partial").length,
       unpaidCount: accounts.filter((a) => a.status === "unpaid").length,
+      receiptCount: accounts.reduce((s, a) => s + a.payments.length, 0),
     };
   },
 
@@ -172,11 +236,15 @@ export const mockRepository: Repository = {
   async getStudentAccount(
     studentId: string,
     term: TermName,
-  ): Promise<StudentAccount | null> {
+  ): Promise<StudentAccountOrBillless | null> {
     await tick();
     const student = STUDENTS.find((s) => s.id === studentId);
     if (!student) return null;
-    return buildAccount(student, term);
+    const account = buildAccount(student, term);
+    if (account) return { kind: "account", account };
+    const cls = classById(student.classId);
+    const guardian = GUARDIANS.find((g) => g.id === student.guardianId)!;
+    return { kind: "billless", student, className: cls?.name ?? "-", guardian };
   },
 
   async listStudents(): Promise<Student[]> {
@@ -206,6 +274,7 @@ export const mockRepository: Repository = {
       note: input.note,
     };
     PAYMENTS.push(payment);
+    pushAudit("created", "payment", payment.id, `Payment receipt ${payment.receiptNo}`, payment.amount);
     return payment;
   },
 
@@ -234,17 +303,22 @@ export const mockRepository: Repository = {
       dateOfBirth: input.dateOfBirth,
       classId: cls.id,
       guardianId: gId,
-      status: "active",
+      status: input.status ?? "active",
       enrolledOn: new Date().toISOString().slice(0, 10),
     };
     STUDENTS.push(student);
 
-    // Prefer the class level's fee structure; fall back to the typed term fee.
+    // Bill lines: prefer explicitly chosen picker lines, then the class level's
+    // fee structure, then the typed term fee.
     const structure = FEE_ITEMS.filter(
       (f) => f.level === cls.level && f.term === SCHOOL.currentTerm,
     );
     let lines: { name: string; amount: number }[] = [];
-    if (structure.length > 0) {
+    if (input.billLines && input.billLines.length > 0) {
+      lines = input.billLines
+        .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+        .map((l) => ({ name: l.name.trim(), amount: l.amountKobo }));
+    } else if (structure.length > 0) {
       lines = structure.map((f) => ({ name: f.name, amount: f.amount }));
     } else if (input.termFeeKobo > 0) {
       lines = [{ name: "Term fee", amount: input.termFeeKobo }];
@@ -257,11 +331,40 @@ export const mockRepository: Repository = {
         sessionId: SESSION.id,
         term: SCHOOL.currentTerm,
         lines,
-        discount: 0,
+        discount: Math.max(0, input.discountKobo ?? 0),
+        discountReason: input.discountReason,
         createdOn: new Date().toISOString().slice(0, 10),
       });
     }
     return student;
+  },
+
+  async approveRegistration(studentId: string): Promise<void> {
+    await tick();
+    const student = STUDENTS.find((s) => s.id === studentId);
+    if (!student) throw new Error("Student not found.");
+    student.status = "active";
+  },
+
+  async declineRegistration(studentId: string): Promise<DeclineResult> {
+    await tick();
+    const student = STUDENTS.find((s) => s.id === studentId);
+    if (!student) throw new Error("Student not found.");
+    const studentBillIds = BILLS.filter((b) => b.studentId === studentId).map((b) => b.id);
+    const hasPayments = PAYMENTS.some((p) => studentBillIds.includes(p.billId));
+    if (hasPayments) {
+      student.status = "withdrawn";
+      return { outcome: "withdrawn" };
+    }
+    // No money trail: safe to remove the student, their bills, and their guardian.
+    for (let i = BILLS.length - 1; i >= 0; i--) {
+      if (BILLS[i].studentId === studentId) BILLS.splice(i, 1);
+    }
+    const idx = STUDENTS.findIndex((s) => s.id === studentId);
+    if (idx >= 0) STUDENTS.splice(idx, 1);
+    const gIdx = GUARDIANS.findIndex((g) => g.id === student.guardianId);
+    if (gIdx >= 0) GUARDIANS.splice(gIdx, 1);
+    return { outcome: "deleted" };
   },
 
   async importStudents(rows: ImportStudentRow[]): Promise<ImportResult> {
@@ -344,6 +447,7 @@ export const mockRepository: Repository = {
       note: input.note,
     };
     EXPENSES.push(expense);
+    pushAudit("created", "expense", expense.id, `Expense to ${expense.payee}`, expense.amount);
     return expense;
   },
 
@@ -361,6 +465,7 @@ export const mockRepository: Repository = {
       method: patch.method,
       note: patch.note,
     });
+    pushAudit("edited", "expense", existing.id, `Expense to ${existing.payee}`, existing.amount);
     return existing;
   },
 
@@ -368,6 +473,269 @@ export const mockRepository: Repository = {
     await tick();
     const i = EXPENSES.findIndex((e) => e.id === id);
     if (i >= 0) EXPENSES.splice(i, 1);
+    pushAudit("deleted", "expense", id, "Expense", null);
+  },
+
+  async listIncome(filter?: DateFilter): Promise<Income[]> {
+    await tick();
+    return INCOME.filter((i) => inRange(i.receivedOn, filter)).sort((a, b) =>
+      b.receivedOn.localeCompare(a.receivedOn),
+    );
+  },
+
+  async createIncome(input: CreateIncomeInput): Promise<Income> {
+    await tick();
+    if (input.amountKobo <= 0)
+      throw new Error("Enter an amount greater than zero.");
+    const income: Income = {
+      id: `inc-new-${Date.now()}`,
+      schoolId: SCHOOL.id,
+      source: input.source,
+      description: input.description,
+      amount: input.amountKobo,
+      receivedOn: input.receivedOn,
+      method: input.method,
+      note: input.note,
+      recordedByName: input.recordedByName,
+    };
+    INCOME.push(income);
+    pushAudit("created", "income", income.id, `Income: ${income.source}`, income.amount);
+    return income;
+  },
+
+  async updateIncome(id: string, patch: CreateIncomeInput): Promise<Income> {
+    await tick();
+    if (patch.amountKobo <= 0)
+      throw new Error("Enter an amount greater than zero.");
+    const existing = INCOME.find((i) => i.id === id);
+    if (!existing) throw new Error("Income entry not found.");
+    Object.assign(existing, {
+      source: patch.source,
+      description: patch.description,
+      amount: patch.amountKobo,
+      receivedOn: patch.receivedOn,
+      method: patch.method,
+      note: patch.note,
+    });
+    pushAudit("edited", "income", existing.id, `Income: ${existing.source}`, existing.amount);
+    return existing;
+  },
+
+  async deleteIncome(id: string): Promise<void> {
+    await tick();
+    const i = INCOME.findIndex((x) => x.id === id);
+    if (i >= 0) INCOME.splice(i, 1);
+    pushAudit("deleted", "income", id, "Income entry", null);
+  },
+
+  async listSubjects(): Promise<Subject[]> {
+    await tick();
+    return [...SUBJECTS].sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  async ensureDefaultSubjects(): Promise<void> {
+    await tick();
+    if (SUBJECTS.length === 0) {
+      SUBJECT_NAMES.forEach((name, i) =>
+        SUBJECTS.push({ id: `subj-${i}`, schoolId: SCHOOL.id, name }),
+      );
+    }
+  },
+
+  async saveAssessments(input: SaveAssessmentsInput): Promise<void> {
+    await tick();
+    for (const s of input.scores) {
+      const existing = ASSESSMENTS.find(
+        (a) =>
+          a.studentId === s.studentId &&
+          a.subjectId === input.subjectId &&
+          a.term === input.term &&
+          a.sessionId === SESSION.id,
+      );
+      if (existing) {
+        existing.ca1 = s.ca1;
+        existing.ca2 = s.ca2;
+        existing.exam = s.exam;
+        existing.recordedByName = input.recordedByName;
+      } else {
+        ASSESSMENTS.push({
+          id: `asm-${Date.now()}-${ASSESSMENTS.length}`,
+          schoolId: SCHOOL.id,
+          studentId: s.studentId,
+          subjectId: input.subjectId,
+          sessionId: SESSION.id,
+          term: input.term,
+          ca1: s.ca1,
+          ca2: s.ca2,
+          exam: s.exam,
+          recordedByName: input.recordedByName,
+        });
+      }
+    }
+  },
+
+  async listClassRecordSummaries(term: TermName): Promise<ClassRecordSummary[]> {
+    await tick();
+    return CLASSES.map((cls) => {
+      const studentIds = STUDENTS.filter((s) => s.classId === cls.id).map((s) => s.id);
+      const rows = ASSESSMENTS.filter(
+        (a) => a.term === term && a.sessionId === SESSION.id && studentIds.includes(a.studentId),
+      );
+      const caVals = rows
+        .filter((r) => r.ca1 != null && r.ca2 != null)
+        .map((r) => (r.ca1 as number) + (r.ca2 as number));
+      const examVals = rows.filter((r) => r.exam != null).map((r) => r.exam as number);
+      return {
+        classId: cls.id,
+        className: cls.name,
+        studentCount: studentIds.length,
+        avgCa: mean(caVals),
+        avgExam: mean(examVals),
+      };
+    });
+  },
+
+  async listSubjectAverages(classId: string, term: TermName): Promise<SubjectAverageRow[]> {
+    await tick();
+    const studentIds = STUDENTS.filter((s) => s.classId === classId).map((s) => s.id);
+    return SUBJECTS.map((subj) => {
+      const rows = ASSESSMENTS.filter(
+        (a) => a.subjectId === subj.id && a.term === term && a.sessionId === SESSION.id && studentIds.includes(a.studentId),
+      );
+      const totals = rows
+        .map((r) => componentTotal(r.ca1, r.ca2, r.exam))
+        .filter((t): t is number => t != null);
+      return {
+        subjectId: subj.id,
+        subjectName: subj.name,
+        avgCa1: mean(rows.filter((r) => r.ca1 != null).map((r) => r.ca1 as number)),
+        avgCa2: mean(rows.filter((r) => r.ca2 != null).map((r) => r.ca2 as number)),
+        avgExam: mean(rows.filter((r) => r.exam != null).map((r) => r.exam as number)),
+        avgTotal: mean(totals),
+      };
+    }).filter((r) => r.avgTotal != null);
+  },
+
+  async listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]> {
+    await tick();
+    const students = STUDENTS.filter((s) => s.classId === classId);
+    return students.map((s) => {
+      const a = ASSESSMENTS.find(
+        (x) => x.studentId === s.id && x.subjectId === subjectId && x.term === term && x.sessionId === SESSION.id,
+      );
+      const ca1 = a?.ca1 ?? null;
+      const ca2 = a?.ca2 ?? null;
+      const exam = a?.exam ?? null;
+      const total = componentTotal(ca1, ca2, exam);
+      return {
+        studentId: s.id,
+        studentName: `${s.firstName} ${s.lastName}`,
+        ca1, ca2, exam, total, grade: gradeFor(total),
+      };
+    });
+  },
+
+  async listClassStudentAverages(classId: string, term: TermName) {
+    await tick();
+    const students = STUDENTS.filter((s) => s.classId === classId);
+    return students.map((s) => {
+      const totals = ASSESSMENTS.filter(
+        (a) => a.studentId === s.id && a.term === term && a.sessionId === SESSION.id,
+      )
+        .map((a) => componentTotal(a.ca1, a.ca2, a.exam))
+        .filter((t): t is number => t != null);
+      return { studentId: s.id, studentName: `${s.firstName} ${s.lastName}`, average: mean(totals) };
+    });
+  },
+
+  async getStudentReport(studentId: string, term: TermName): Promise<StudentReport> {
+    await tick();
+    const student = STUDENTS.find((s) => s.id === studentId);
+    const cls = student ? CLASSES.find((c) => c.id === student.classId) : undefined;
+    const rows = ASSESSMENTS.filter(
+      (a) => a.studentId === studentId && a.term === term && a.sessionId === SESSION.id,
+    ).map((a) => {
+      const subj = SUBJECTS.find((s) => s.id === a.subjectId);
+      const total = componentTotal(a.ca1, a.ca2, a.exam);
+      return {
+        subjectId: a.subjectId,
+        subjectName: subj?.name ?? "Subject",
+        ca1: a.ca1, ca2: a.ca2, exam: a.exam, total, grade: gradeFor(total),
+      };
+    });
+    const totals = rows.map((r) => r.total).filter((t): t is number => t != null);
+    return {
+      studentId,
+      studentName: student ? `${student.firstName} ${student.lastName}` : "Student",
+      className: cls?.name ?? "-",
+      term,
+      rows,
+      overallAverage: mean(totals),
+    };
+  },
+
+  async importAssessments(term, rows, recordedByName): Promise<AssessmentImportResult> {
+    await tick();
+    let updated = 0;
+    for (const r of rows) {
+      const existing = ASSESSMENTS.find(
+        (a) => a.studentId === r.studentId && a.subjectId === r.subjectId && a.term === term && a.sessionId === SESSION.id,
+      );
+      if (existing) {
+        existing.ca1 = r.ca1;
+        existing.ca2 = r.ca2;
+        existing.exam = r.exam;
+        existing.recordedByName = recordedByName;
+      } else {
+        ASSESSMENTS.push({
+          id: `asm-${Date.now()}-${ASSESSMENTS.length}`,
+          schoolId: SCHOOL.id,
+          studentId: r.studentId,
+          subjectId: r.subjectId,
+          sessionId: SESSION.id,
+          term,
+          ca1: r.ca1,
+          ca2: r.ca2,
+          exam: r.exam,
+          recordedByName,
+        });
+      }
+      updated += 1;
+    }
+    return { updated, skipped: 0, errors: [] };
+  },
+
+  async listIncomeView(filter?: DateFilter): Promise<IncomeRow[]> {
+    await tick();
+    const rows: IncomeRow[] = [];
+    for (const p of PAYMENTS) {
+      if (!inRange(p.paidOn, filter)) continue;
+      rows.push({
+        kind: "fee",
+        id: p.id,
+        date: p.paidOn,
+        source: "School fee",
+        description: studentName(p.studentId),
+        amount: p.amount,
+        method: p.method,
+        recordedByName: p.recordedByName,
+        studentId: p.studentId,
+      });
+    }
+    for (const i of INCOME) {
+      if (!inRange(i.receivedOn, filter)) continue;
+      rows.push({
+        kind: "other",
+        id: i.id,
+        date: i.receivedOn,
+        source: i.source,
+        description: i.description,
+        amount: i.amount,
+        method: i.method,
+        recordedByName: i.recordedByName,
+      });
+    }
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
   },
 
   async listStaff(): Promise<Staff[]> {
@@ -498,6 +866,20 @@ export const mockRepository: Repository = {
         reference: e.id,
       });
     }
+    for (const i of INCOME) {
+      if (!inRange(i.receivedOn, filter)) continue;
+      entries.push({
+        id: i.id,
+        date: i.receivedOn,
+        kind: "income",
+        direction: "in",
+        title: i.source,
+        subtitle: `${i.description} · ${i.method}`,
+        amount: i.amount,
+        method: i.method,
+        reference: i.id,
+      });
+    }
     return groupLedger(entries);
   },
 
@@ -535,6 +917,33 @@ export const mockRepository: Repository = {
       });
   },
 
+  async importFeeStructure(
+    term: TermName,
+    rows: FeeTemplateRow[],
+  ): Promise<FeeStructureImportResult> {
+    await tick();
+    const byLevel = new Map<string, FeeTemplateRow[]>();
+    for (const r of rows) {
+      const list = byLevel.get(r.level) ?? [];
+      list.push(r);
+      byLevel.set(r.level, list);
+    }
+    let itemsWritten = 0;
+    for (const [level, items] of byLevel) {
+      await this.saveFeeStructure(
+        level,
+        term,
+        items.map((i) => ({
+          name: i.name,
+          amountKobo: i.amountKobo,
+          optional: i.optional,
+        })),
+      );
+      itemsWritten += items.length;
+    }
+    return { levelsUpdated: byLevel.size, itemsWritten, skipped: 0 };
+  },
+
   async generateBill(studentId: string, term: TermName): Promise<void> {
     await tick();
     if (BILLS.some((b) => b.studentId === studentId && b.term === term)) return;
@@ -568,5 +977,64 @@ export const mockRepository: Repository = {
     if (!bill) throw new Error("This student has no bill for the term yet.");
     bill.discount = Math.max(0, discountKobo);
     bill.discountReason = reason;
+  },
+
+  async updateBillLines(
+    studentId: string,
+    term: TermName,
+    lines: BillLineInput[],
+  ): Promise<void> {
+    await tick();
+    const bill = BILLS.find((b) => b.studentId === studentId && b.term === term);
+    if (!bill) throw new Error("This student has no bill for the term yet.");
+    const clean = lines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+    const newTotal = clean.reduce((s, l) => s + l.amount, 0) - bill.discount;
+    const paid = paymentsFor(bill.id).reduce((s, p) => s + p.amount, 0);
+    if (newTotal < paid) {
+      throw new Error("New bill total is less than what has already been paid.");
+    }
+    bill.lines = clean;
+  },
+
+  async createBillForTerm(
+    studentId: string,
+    term: TermName,
+    billLines: BillLineInput[],
+    discountKobo?: number,
+    discountReason?: string,
+  ): Promise<void> {
+    await tick();
+    const clean = billLines
+      .filter((l) => l.name.trim() !== "" && l.amountKobo >= 0)
+      .map((l) => ({ name: l.name.trim(), amount: l.amountKobo }));
+    if (clean.length === 0) throw new Error("A bill needs at least one item.");
+    const existing = BILLS.find((b) => b.studentId === studentId && b.term === term);
+    if (existing) {
+      existing.lines = clean;
+      existing.discount = Math.max(0, discountKobo ?? 0);
+      existing.discountReason = discountReason;
+      return;
+    }
+    BILLS.push({
+      id: `b-manual-${studentId}-${term}-${Date.now()}`,
+      schoolId: SCHOOL.id,
+      studentId,
+      sessionId: SESSION.id,
+      term,
+      lines: clean,
+      discount: Math.max(0, discountKobo ?? 0),
+      discountReason,
+      createdOn: new Date().toISOString().slice(0, 10),
+    });
+  },
+
+  async listAuditLog(filter?: DateFilter): Promise<AuditEntry[]> {
+    await tick();
+    return AUDIT.filter((a) => inRange(a.createdAt.slice(0, 10), filter)).sort(
+      (x, y) => y.createdAt.localeCompare(x.createdAt),
+    );
   },
 };

@@ -20,7 +20,7 @@ create extension if not exists "pgcrypto";
 create type user_role   as enum ('proprietor', 'bursar', 'teacher');
 create type term_name   as enum ('first', 'second', 'third');
 create type pay_method  as enum ('cash', 'transfer', 'pos', 'online');
-create type student_status as enum ('active', 'graduated', 'withdrawn');
+create type student_status as enum ('active', 'graduated', 'withdrawn', 'pending');
 create type staff_type      as enum ('teaching', 'non_teaching');
 create type expense_cadence as enum ('one_off', 'monthly', 'yearly');
 
@@ -35,6 +35,9 @@ create table schools (
   phone              text,
   current_session_id uuid,
   current_term       term_name not null default 'first',
+  bank_account_number text,
+  bank_account_name   text,
+  bank_name           text,
   created_at         timestamptz not null default now()
 );
 
@@ -204,6 +207,72 @@ create index on staff (school_id, active);
 create index on expenses (school_id, spent_on);
 create index on expenses (school_id, category);
 
+-- Non-fee money in: donations, grants, sales, rentals. Unions into the ledger
+-- as credits alongside fee payments.
+create table income (
+  id               uuid primary key default gen_random_uuid(),
+  school_id        uuid not null references schools(id) on delete cascade,
+  session_id       uuid references sessions(id) on delete set null,
+  source           text not null,
+  description      text not null,
+  amount_kobo      bigint not null check (amount_kobo > 0),
+  received_on      date not null default current_date,
+  method           pay_method not null default 'cash',
+  recorded_by      uuid references profiles(id),
+  recorded_by_name text not null,
+  note             text,
+  created_at       timestamptz not null default now()
+);
+
+create index on income (school_id, received_on);
+
+-- Append-only money audit trail. Written ONLY by the log_money_change() trigger
+-- (below), never by the client. No update/delete policy exists, so entries can
+-- be neither forged nor erased through the API.
+create table audit_log (
+  id          uuid primary key default gen_random_uuid(),
+  school_id   uuid not null references schools(id) on delete cascade,
+  actor_id    uuid,
+  actor_name  text,
+  action      text not null,   -- created | edited | deleted
+  entity      text not null,   -- payment | expense | income
+  entity_id   uuid,
+  summary     text not null,
+  amount_kobo bigint,
+  created_at  timestamptz not null default now()
+);
+
+create index on audit_log (school_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Academic records: subjects and per-student assessments
+-- ---------------------------------------------------------------------------
+create table subjects (
+  id         uuid primary key default gen_random_uuid(),
+  school_id  uuid not null references schools(id) on delete cascade,
+  name       text not null,
+  created_at timestamptz not null default now()
+);
+create index on subjects (school_id);
+
+create table assessments (
+  id               uuid primary key default gen_random_uuid(),
+  school_id        uuid not null references schools(id) on delete cascade,
+  student_id       uuid not null references students(id) on delete cascade,
+  subject_id       uuid not null references subjects(id) on delete cascade,
+  session_id       uuid references sessions(id) on delete set null,
+  term             term_name not null,
+  ca1              smallint check (ca1 between 0 and 20),
+  ca2              smallint check (ca2 between 0 and 20),
+  exam             smallint check (exam between 0 and 60),
+  recorded_by      uuid references profiles(id),
+  recorded_by_name text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (student_id, subject_id, session_id, term)
+);
+create index on assessments (school_id, term);
+
 -- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
 -- ---------------------------------------------------------------------------
@@ -258,10 +327,19 @@ alter table bill_lines enable row level security;
 alter table payments   enable row level security;
 alter table staff      enable row level security;
 alter table expenses   enable row level security;
+alter table income      enable row level security;
+alter table audit_log   enable row level security;
+alter table subjects    enable row level security;
+alter table assessments enable row level security;
 
 -- Everyone signed in may read rows for their own school. -------------------
 create policy read_same_school on schools
   for select using (id = auth_school_id());
+-- Bank details and other school settings: only Proprietor/Bursar may update.
+-- UPDATE only (no insert/delete from the client); schools are created server-side.
+create policy manage_school on schools
+  for update using (id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 create policy read_same_school on profiles
   for select using (school_id = auth_school_id());
 create policy read_same_school on sessions
@@ -338,6 +416,31 @@ create policy manage_expenses on expenses
   for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
   with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
 
+-- Income (money in): same shape as expenses. Proprietor/Bursar only.
+create policy read_same_school on income
+  for select using (school_id = auth_school_id());
+create policy manage_income on income
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar'));
+
+-- Audit trail: readable by anyone in the school; NO write policy exists, so the
+-- client can never insert, edit, or delete an entry. Rows arrive only via the
+-- log_money_change() trigger, which runs as SECURITY DEFINER.
+create policy read_same_school on audit_log
+  for select using (school_id = auth_school_id());
+
+-- Subjects & assessments: staff (including teachers) may read and write.
+create policy read_same_school on subjects
+  for select using (school_id = auth_school_id());
+create policy manage_subjects on subjects
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar','teacher'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar','teacher'));
+create policy read_same_school on assessments
+  for select using (school_id = auth_school_id());
+create policy manage_assessments on assessments
+  for all using (school_id = auth_school_id() and auth_role() in ('proprietor','bursar','teacher'))
+  with check (school_id = auth_school_id() and auth_role() in ('proprietor','bursar','teacher'));
+
 -- ============================================================================
 -- Grants — least privilege for the PostgREST API roles
 -- ============================================================================
@@ -349,9 +452,11 @@ revoke all on all tables in schema public from authenticated;
 
 grant select, insert, update, delete on table
   schools, sessions, classes, guardians, students,
-  fee_items, bills, bill_lines, payments, staff, expenses
+  fee_items, bills, bill_lines, payments, staff, expenses, income,
+  subjects, assessments
   to authenticated;
 grant select on table profiles to authenticated;          -- write blocked: role escalation prevention
+grant select on table audit_log to authenticated;         -- read-only: written by trigger only
 grant select on table student_balances to authenticated;  -- view is read-only
 
 -- service_role is the trusted, server-only admin role (secret key, never in the
@@ -374,3 +479,49 @@ grant execute on function auth_school_id() to authenticated;
 -- profile and its role must happen server-side with the service_role key
 -- (e.g. an admin invite flow or a SECURITY DEFINER signup function), never
 -- from the client.
+
+-- ============================================================================
+-- Money audit trail triggers
+-- ============================================================================
+-- Every insert/update/delete on payments, expenses, and income writes an
+-- audit_log row automatically. SECURITY DEFINER so it can insert into audit_log
+-- (which the client cannot write). Because it fires from the trigger, a client
+-- can never omit or forge an entry. EXECUTE is revoked from public so it cannot
+-- be called directly as an RPC.
+create or replace function log_money_change() returns trigger
+  language plpgsql security definer set search_path = public as $$
+declare
+  v_row     record;
+  v_action  text;
+  v_entity  text := TG_ARGV[0];
+  v_summary text;
+  v_actor   uuid := auth.uid();
+  v_name    text;
+begin
+  if TG_OP = 'DELETE' then v_row := OLD; v_action := 'deleted';
+  elsif TG_OP = 'UPDATE' then v_row := NEW; v_action := 'edited';
+  else v_row := NEW; v_action := 'created';
+  end if;
+
+  if v_entity = 'payment' then v_summary := 'Payment receipt ' || coalesce(v_row.receipt_no, '');
+  elsif v_entity = 'expense' then v_summary := 'Expense to ' || coalesce(v_row.payee, '');
+  else v_summary := 'Income: ' || coalesce(v_row.source, '');
+  end if;
+
+  select full_name into v_name from profiles where id = v_actor;
+
+  insert into audit_log (school_id, actor_id, actor_name, action, entity, entity_id, summary, amount_kobo)
+  values (v_row.school_id, v_actor, v_name, v_action, v_entity, v_row.id, v_summary, v_row.amount_kobo);
+
+  if TG_OP = 'DELETE' then return OLD; end if;
+  return NEW;
+end $$;
+
+revoke execute on function log_money_change() from public;
+
+create trigger audit_payments after insert or update or delete on payments
+  for each row execute function log_money_change('payment');
+create trigger audit_expenses after insert or update or delete on expenses
+  for each row execute function log_money_change('expense');
+create trigger audit_income after insert or update or delete on income
+  for each row execute function log_money_change('income');

@@ -1,7 +1,9 @@
 import type {
+  AuditEntry,
   Expense,
   ExpenseCadence,
   FeeItem,
+  Income,
   LedgerDay,
   Payment,
   PaymentMethod,
@@ -13,9 +15,13 @@ import type {
   StaffType,
   Student,
   StudentAccount,
+  StudentAccountOrBillless,
+  StudentStatus,
+  Subject,
   TermName,
   UserProfile,
 } from "@/lib/domain/types";
+import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 
 /**
  * The single interface the UI uses to read and write data. Today it is backed
@@ -43,7 +49,7 @@ export interface Repository {
    */
   listDebtors(term: TermName): Promise<StudentAccount[]>;
 
-  getStudentAccount(studentId: string, term: TermName): Promise<StudentAccount | null>;
+  getStudentAccount(studentId: string, term: TermName): Promise<StudentAccountOrBillless | null>;
 
   listStudents(): Promise<Student[]>;
 
@@ -97,12 +103,183 @@ export interface Repository {
     discountKobo: number,
     reason?: string,
   ): Promise<void>;
+
+  /** Replace fee structure for every class level present in the uploaded rows. */
+  importFeeStructure(
+    term: TermName,
+    rows: FeeTemplateRow[],
+  ): Promise<FeeStructureImportResult>;
+
+  /** Replace a student's bill snapshot lines for the term. Discount is untouched. */
+  updateBillLines(
+    studentId: string,
+    term: TermName,
+    lines: BillLineInput[],
+  ): Promise<void>;
+
+  /** Create the first bill for a student + term (the account was billless). */
+  createBillForTerm(
+    studentId: string,
+    term: TermName,
+    billLines: BillLineInput[],
+    discountKobo?: number,
+    discountReason?: string,
+  ): Promise<void>;
+
+  /** Convert a pending (pre-registered) student into a fully active one. */
+  approveRegistration(studentId: string): Promise<void>;
+  /**
+   * If the student has no payments recorded anywhere, deletes the student,
+   * guardian, and bill entirely. If any payment exists, sets status to
+   * "withdrawn" instead so the receipt trail is never touched.
+   */
+  declineRegistration(studentId: string): Promise<DeclineResult>;
+
+  /** Save the school's bank account details (shown on invoices/receipts). */
+  updateBankAccount(input: BankAccountInput): Promise<void>;
+
+  // --- Income (non-fee money in) --------------------------------------------
+
+  /** Non-fee income entries, newest first, optionally within a date range. */
+  listIncome(filter?: DateFilter): Promise<Income[]>;
+  createIncome(input: CreateIncomeInput): Promise<Income>;
+  updateIncome(id: string, patch: CreateIncomeInput): Promise<Income>;
+  deleteIncome(id: string): Promise<void>;
+
+  /** Merged money-in view: fee payments + non-fee income, newest first. */
+  listIncomeView(filter?: DateFilter): Promise<IncomeRow[]>;
+
+  /** Read-only money audit trail, newest first. */
+  listAuditLog(filter?: DateFilter): Promise<AuditEntry[]>;
+
+  // --- Records: subjects & assessments --------------------------------------
+
+  listSubjects(): Promise<Subject[]>;
+  /** Seed the default subject list if the school has none. Idempotent. */
+  ensureDefaultSubjects(): Promise<void>;
+  /** Upsert scores for one class + subject + term. */
+  saveAssessments(input: SaveAssessmentsInput): Promise<void>;
+
+  listClassRecordSummaries(term: TermName): Promise<ClassRecordSummary[]>;
+  listSubjectAverages(classId: string, term: TermName): Promise<SubjectAverageRow[]>;
+  listStudentSubjectScores(classId: string, subjectId: string, term: TermName): Promise<StudentSubjectScore[]>;
+  listClassStudentAverages(classId: string, term: TermName): Promise<{ studentId: string; studentName: string; average: number | null }[]>;
+  getStudentReport(studentId: string, term: TermName): Promise<StudentReport>;
+  /** Upsert parsed template rows (any mix of subjects) for a term. */
+  importAssessments(term: TermName, rows: AssessmentImportRow[], recordedByName: string): Promise<AssessmentImportResult>;
+}
+
+export interface AssessmentImportRow {
+  studentId: string;
+  subjectId: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+}
+export interface AssessmentImportResult {
+  updated: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+}
+
+export interface ClassRecordSummary {
+  classId: string;
+  className: string;
+  studentCount: number;
+  avgCa: number | null;
+  avgExam: number | null;
+}
+export interface SubjectAverageRow {
+  subjectId: string;
+  subjectName: string;
+  avgCa1: number | null;
+  avgCa2: number | null;
+  avgExam: number | null;
+  avgTotal: number | null;
+}
+export interface StudentSubjectScore {
+  studentId: string;
+  studentName: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+  total: number | null;
+  grade: string | null;
+}
+export interface ReportRow {
+  subjectId: string;
+  subjectName: string;
+  ca1: number | null;
+  ca2: number | null;
+  exam: number | null;
+  total: number | null;
+  grade: string | null;
+}
+export interface StudentReport {
+  studentId: string;
+  studentName: string;
+  className: string;
+  term: TermName;
+  rows: ReportRow[];
+  overallAverage: number | null;
+}
+
+export interface SaveAssessmentsInput {
+  classId: string;
+  subjectId: string;
+  term: TermName;
+  scores: {
+    studentId: string;
+    ca1: number | null;
+    ca2: number | null;
+    exam: number | null;
+  }[];
+  recordedByName: string;
+}
+
+export interface IncomeRow {
+  kind: "fee" | "other";
+  id: string;
+  date: string;
+  source: string;
+  description: string;
+  amount: number; // kobo
+  method: PaymentMethod;
+  recordedByName: string;
+  studentId?: string;
+}
+
+export interface CreateIncomeInput {
+  source: string;
+  description: string;
+  amountKobo: number;
+  receivedOn: string; // ISO date
+  method: PaymentMethod;
+  note?: string;
+  recordedByName: string;
+}
+
+export interface BankAccountInput {
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
 }
 
 export interface FeeLineInput {
   name: string;
   amountKobo: number;
   optional?: boolean;
+}
+
+export interface BillLineInput {
+  name: string;
+  amountKobo: number;
+}
+
+export interface FeeStructureImportResult {
+  levelsUpdated: number;
+  itemsWritten: number;
+  skipped: number;
 }
 
 export interface DateFilter {
@@ -157,9 +334,20 @@ export interface CreateStudentInput {
   religion?: string;
   classId: string;
   termFeeKobo: number;
+  /** Chosen + edited bill lines from the picker. If omitted, falls back to termFeeKobo. */
+  billLines?: BillLineInput[];
+  discountKobo?: number;
+  discountReason?: string;
   guardianName: string;
   guardianPhone: string;
   guardianRelationship?: string;
+  /** Defaults to "active" when omitted. Set "pending" for a temporary /
+   * pre-registered student with a provisional bill. */
+  status?: StudentStatus;
+}
+
+export interface DeclineResult {
+  outcome: "deleted" | "withdrawn";
 }
 
 export interface DashboardStats {
@@ -173,6 +361,8 @@ export interface DashboardStats {
   fullyPaidCount: number;
   partialCount: number;
   unpaidCount: number;
+  /** Number of payments (receipts) recorded for the term. */
+  receiptCount: number;
 }
 
 export interface RecordPaymentInput {

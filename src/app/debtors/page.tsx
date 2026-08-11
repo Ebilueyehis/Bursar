@@ -58,7 +58,7 @@ export default function DebtorsPage() {
         />
       ) : (
         <>
-          <Card className="mb-4 flex items-center justify-between border-ink bg-ink text-white">
+          <Card className="mb-4 flex items-center justify-between border-[color:var(--hero-border)] bg-[image:var(--hero-grad)] text-white">
             <div>
               <p className="text-sm text-white/70">Total outstanding</p>
               <p className="money text-2xl font-bold">
