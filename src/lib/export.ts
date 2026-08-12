@@ -35,6 +35,70 @@ export function exportToXlsx(
   });
 }
 
+/** One sheet in a multi-sheet workbook. */
+export interface ExportSheet {
+  name: string;
+  headers: string[];
+  rows: (string | number)[][];
+}
+
+/**
+ * Excel rejects sheet names over 31 characters and forbids : \ / ? * [ ].
+ * Anything that would make the workbook refuse to open is replaced rather than
+ * passed through, because a failed download gives the user nothing to act on.
+ */
+export function safeSheetName(name: string): string {
+  const cleaned = name
+    .replace(/[:\\/?*]/g, "-")
+    .replace(/\[/g, "(")
+    .replace(/\]/g, ")")
+    .trim();
+  if (!cleaned) return "Sheet";
+  return cleaned.slice(0, 31);
+}
+
+/**
+ * Client-side .xlsx export with one sheet per table. Same deferred-work shape
+ * as exportToXlsx: building and serializing is synchronous and CPU-heavy, so it
+ * runs after the click has painted and does not block the interaction.
+ */
+export function exportWorkbook(
+  filename: string,
+  sheets: ExportSheet[],
+): Promise<void> {
+  const name = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
+  return new Promise<void>((resolve, reject) => {
+    const run = () => {
+      try {
+        const workbook = XLSX.utils.book_new();
+        const used = new Set<string>();
+        for (const sheet of sheets) {
+          let title = safeSheetName(sheet.name);
+          // Two sheets cannot share a name, and SheetJS throws rather than
+          // renaming, which would lose a whole table from the export.
+          let n = 2;
+          while (used.has(title)) {
+            title = safeSheetName(`${sheet.name} ${n}`);
+            n += 1;
+          }
+          used.add(title);
+          const ws = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
+          XLSX.utils.book_append_sheet(workbook, ws, title);
+        }
+        XLSX.writeFile(workbook, name);
+        resolve();
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error("Export failed."));
+      }
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setTimeout(run, 0));
+    } else {
+      setTimeout(run, 0);
+    }
+  });
+}
+
 /** Read the first sheet of an uploaded .xlsx/.csv into keyed rows (header row). */
 export async function readSheetRows(
   file: File,
