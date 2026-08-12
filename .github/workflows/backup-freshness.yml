@@ -1,0 +1,41 @@
+name: Backup freshness
+
+# Monday 09:00 UTC. A backup job that stops silently is worse than no backup,
+# so something has to notice. GitHub emails on workflow failure.
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fail if the newest daily backup is older than 48 hours
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          BUCKET: ${{ secrets.R2_BUCKET }}
+          ACCOUNT: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${ACCOUNT}.r2.cloudflarestorage.com"
+          LATEST=$(aws s3 ls "s3://${BUCKET}/daily/" --endpoint-url "$ENDPOINT" \
+            | sort | tail -n 1 || true)
+          if [ -z "$LATEST" ]; then
+            echo "No backup objects found under daily/. The backup job is not working."
+            exit 1
+          fi
+          echo "Newest object: $LATEST"
+          STAMP="$(echo "$LATEST" | awk '{print $1" "$2}')"
+          AGE_HOURS=$(( ( $(date -u +%s) - $(date -u -d "$STAMP" +%s) ) / 3600 ))
+          echo "Age: ${AGE_HOURS} hours"
+          if [ "$AGE_HOURS" -gt 48 ]; then
+            echo "Newest backup is ${AGE_HOURS} hours old, which is over the 48 hour limit."
+            exit 1
+          fi
+          echo "Backup freshness is within limits."
