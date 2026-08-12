@@ -55,6 +55,7 @@ import type {
   StudentSubjectScore,
   StudentReport,
   AssessmentImportResult,
+  SchoolExport,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { SUBJECT_NAMES } from "@/lib/domain/constants";
@@ -1036,5 +1037,26 @@ export const mockRepository: Repository = {
     return AUDIT.filter((a) => inRange(a.createdAt.slice(0, 10), filter)).sort(
       (x, y) => y.createdAt.localeCompare(x.createdAt),
     );
+  },
+
+  async exportSchoolData(): Promise<SchoolExport> {
+    await tick();
+    // Every array is copied rather than handed out by reference, so a caller
+    // cannot mutate the store through the export.
+    return {
+      school: SCHOOL,
+      session: SESSION,
+      classes: [...CLASSES],
+      students: [...STUDENTS],
+      guardians: [...GUARDIANS],
+      feeItems: [...FEE_ITEMS],
+      bills: [...BILLS],
+      payments: [...PAYMENTS],
+      expenses: [...EXPENSES],
+      income: [...INCOME],
+      staff: [...STAFF],
+      subjects: [...SUBJECTS],
+      assessments: [...ASSESSMENTS],
+    };
   },
 };

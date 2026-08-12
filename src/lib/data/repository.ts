@@ -1,8 +1,11 @@
 import type {
+  Assessment,
   AuditEntry,
+  Bill,
   Expense,
   ExpenseCadence,
   FeeItem,
+  Guardian,
   Income,
   LedgerDay,
   Payment,
@@ -167,6 +170,31 @@ export interface Repository {
   getStudentReport(studentId: string, term: TermName): Promise<StudentReport>;
   /** Upsert parsed template rows (any mix of subjects) for a term. */
   importAssessments(term: TermName, rows: AssessmentImportRow[], recordedByName: string): Promise<AssessmentImportResult>;
+
+  // --- Export ---------------------------------------------------------------
+
+  /** The school's complete records, for export. */
+  exportSchoolData(): Promise<SchoolExport>;
+}
+
+/**
+ * Everything one school owns, for the "your records are yours" export. No term
+ * argument: this is the whole record, not a slice of it.
+ */
+export interface SchoolExport {
+  school: School;
+  session: Session;
+  classes: SchoolClass[];
+  students: Student[];
+  guardians: Guardian[];
+  feeItems: FeeItem[];
+  bills: Bill[];
+  payments: Payment[];
+  expenses: Expense[];
+  income: Income[];
+  staff: Staff[];
+  subjects: Subject[];
+  assessments: Assessment[];
 }
 
 export interface AssessmentImportRow {

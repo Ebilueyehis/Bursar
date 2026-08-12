@@ -1,9 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
 import type {
+  Assessment,
   AuditEntry,
   Bill,
   Expense,
   FeeItem,
+  Guardian,
   Income,
   Subject,
   LedgerDay,
@@ -44,6 +46,7 @@ import type {
   StudentSubjectScore,
   StudentReport,
   AssessmentImportResult,
+  SchoolExport,
 } from "@/lib/data/repository";
 import type { FeeTemplateRow } from "@/lib/fees/feeTemplate";
 import { groupLedger } from "@/lib/data/ledger";
@@ -212,6 +215,51 @@ function mapFeeItem(r: Row): FeeItem {
     name: r.name as string,
     amount: Number(r.amount_kobo),
     optional: (r.optional as boolean) ?? false,
+  };
+}
+
+function mapGuardian(r: Row): Guardian {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    fullName: r.full_name as string,
+    phone: (r.phone as string) ?? "",
+    altPhone: (r.alt_phone as string) ?? undefined,
+    email: (r.email as string) ?? undefined,
+    relationship: (r.relationship as string) ?? undefined,
+  };
+}
+
+function mapAssessment(r: Row): Assessment {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    studentId: r.student_id as string,
+    subjectId: r.subject_id as string,
+    sessionId: r.session_id as string,
+    term: r.term as TermName,
+    ca1: numOrNull(r.ca1),
+    ca2: numOrNull(r.ca2),
+    exam: numOrNull(r.exam),
+    recordedByName: (r.recorded_by_name as string) ?? "",
+  };
+}
+
+/** Bill rows carry their lines through a join, same shape buildAccount reads. */
+function mapBill(r: Row): Bill {
+  return {
+    id: r.id as string,
+    schoolId: r.school_id as string,
+    studentId: r.student_id as string,
+    sessionId: r.session_id as string,
+    term: r.term as TermName,
+    lines: ((r.bill_lines as Row[]) ?? []).map((l) => ({
+      name: l.name as string,
+      amount: Number(l.amount_kobo),
+    })),
+    discount: Number(r.discount_kobo ?? 0),
+    discountReason: (r.discount_reason as string) ?? undefined,
+    createdOn: r.created_on as string,
   };
 }
 
@@ -1492,5 +1540,57 @@ export const supabaseRepository: Repository = {
       .from("bill_lines")
       .insert(clean.map((l) => ({ bill_id: billId, ...l })));
     if (lineErr) throw new Error("Couldn't save the bill items. Please try again.");
+  },
+
+  async exportSchoolData(): Promise<SchoolExport> {
+    const client = sb();
+    const { school, session } = await getContext();
+    if (!school || !session) throw new Error("No school is set up yet.");
+
+    // RLS scopes every one of these to the caller's school. No school_id filter
+    // is added here for the same reason it is absent everywhere else: the
+    // database is the boundary, not this query. Nothing is filtered by term
+    // either, because this is the whole record rather than a slice of it.
+    const [
+      classes,
+      students,
+      guardians,
+      feeItems,
+      bills,
+      payments,
+      expenses,
+      income,
+      staff,
+      subjects,
+      assessments,
+    ] = await Promise.all([
+      client.from("classes").select("*").order("level"),
+      client.from("students").select("*").order("last_name"),
+      client.from("guardians").select("*").order("full_name"),
+      client.from("fee_items").select("*").order("level"),
+      client.from("bills").select("*, bill_lines(*)").order("created_on"),
+      client.from("payments").select("*").order("paid_on"),
+      client.from("expenses").select("*").order("spent_on"),
+      client.from("income").select("*").order("received_on"),
+      client.from("staff").select("*").order("full_name"),
+      client.from("subjects").select("*").order("name"),
+      client.from("assessments").select("*"),
+    ]);
+
+    return {
+      school,
+      session,
+      classes: (classes.data ?? []).map(mapClass),
+      students: (students.data ?? []).map(mapStudent),
+      guardians: (guardians.data ?? []).map(mapGuardian),
+      feeItems: (feeItems.data ?? []).map(mapFeeItem),
+      bills: (bills.data ?? []).map(mapBill),
+      payments: (payments.data ?? []).map(mapPayment),
+      expenses: (expenses.data ?? []).map(mapExpense),
+      income: (income.data ?? []).map(mapIncome),
+      staff: (staff.data ?? []).map(mapStaff),
+      subjects: (subjects.data ?? []).map(mapSubject),
+      assessments: (assessments.data ?? []).map(mapAssessment),
+    };
   },
 };
