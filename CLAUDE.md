@@ -1,8 +1,24 @@
 # Working in this repository
 
-Read this before changing anything. It applies to every contributor, human or
-agent. Where a rule has a reason, the reason is given: a rule whose purpose is
-unclear gets worked around.
+Read this before changing anything. Where a rule has a reason, the reason is
+given: a rule whose purpose is unclear gets worked around.
+
+## Scope: engineering sessions only
+
+This is the standard operating procedure for **Claude Code sessions working in
+this repository**, and for any human contributor doing the same work. It governs
+building, changing and shipping Bursar.
+
+It does **not** govern ordinary Claude Chat or Cowork sessions. Asking a question
+about the product, drafting sales copy, thinking through pricing, or researching
+an option is not a change to this repository: there is no build to keep green, no
+commit to attach a document to, and nothing that can go stale. Applying a
+definition of done to a conversation would be friction with no payoff.
+
+The line is the repository, not the topic. If any session, on any surface, ends
+up committing to this repository, it is doing engineering work and everything
+below applies to it. A rule that only some contributors follow is not a
+guarantee, it is a habit.
 
 ---
 

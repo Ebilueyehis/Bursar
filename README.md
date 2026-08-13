@@ -31,7 +31,8 @@ npm run build
 ## Read this before contributing
 
 `CLAUDE.md` carries the definition of done, the standing rules, and how work
-flows from idea to backlog to spec to plan to code. It applies to everyone.
+flows from idea to backlog to spec to plan to code. It applies to anyone
+changing this repository, and not to conversations about the product.
 
 The short version: money is integer kobo, the database is the security boundary,
 the PRD is updated in the same commit as the feature, and anything noticed but
