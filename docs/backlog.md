@@ -43,6 +43,7 @@ down, and why, is worth as much as knowing what was built.
 | Richer student profile, weeks-owed trends | M | idea | |
 | Offline payment queue with reserved receipt blocks | L | idea | Designed in section 8 of the reliability spec. Deliberately deferred: new failure modes on money during a pilot whose purpose is proving the records can be trusted. |
 | Rasterised PWA icons (192, 512) | S | idea | Icons are SVG today; PNG widens install support. |
+| PR-gated docs check with branch protection | S | idea | Blocked, not chosen: branch protection is unavailable on private repositories on the GitHub Free plan. Would move `docs-freshness` from `push: main` to `pull_request`, making a stale PRD unmergeable rather than merely reported after the fact. Revisit if the repo goes public, the plan changes, or a second contributor joins. |
 
 ## Rejected, and why
 
