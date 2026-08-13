@@ -11,7 +11,8 @@ import { useSetupTasks } from "@/lib/setup/useSetupTasks";
 import type { SetupTaskId } from "@/lib/setup/setupTasks";
 import { ROLE_LABELS, can, termLabel } from "@/lib/domain/constants";
 import { classRank } from "@/lib/classes";
-import { exportToXlsx, readSheetRows } from "@/lib/export";
+import { exportToXlsx, exportWorkbook, readSheetRows } from "@/lib/export";
+import { schoolSheets } from "@/lib/schoolSheets";
 import {
   FEE_TEMPLATE_HEADERS,
   buildFeeTemplateRows,
@@ -59,7 +60,14 @@ const SUBJECTS = [
   "Physical & Health Education",
 ];
 
-type PanelId = "setup" | "account" | "staff" | "fees" | "roles" | "appearance";
+type PanelId =
+  | "setup"
+  | "account"
+  | "staff"
+  | "fees"
+  | "roles"
+  | "records"
+  | "appearance";
 
 const PANELS: { id: PanelId; label: string }[] = [
   { id: "setup", label: "Setup" },
@@ -67,6 +75,7 @@ const PANELS: { id: PanelId; label: string }[] = [
   { id: "staff", label: "Staff & Payroll" },
   { id: "fees", label: "Fees & Discount" },
   { id: "roles", label: "User Roles" },
+  { id: "records", label: "Your Records" },
   { id: "appearance", label: "Appearance" },
 ];
 
@@ -103,6 +112,7 @@ export default function ProfilePage() {
         {panel === "staff" && <StaffPanel />}
         {panel === "fees" && <FeesPanel />}
         {panel === "roles" && <RolesPanel />}
+        {panel === "records" && <RecordsPanel />}
         {panel === "appearance" && <AppearancePanel />}
       </div>
     </div>
@@ -895,6 +905,71 @@ function RolesPanel() {
 }
 
 // --- Appearance --------------------------------------------------------------
+
+// --- Your records: the school's own copy -------------------------------------
+
+function RecordsPanel() {
+  const { role } = useViewer();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // The workbook carries every payment, expense and staff salary, so it is
+  // gated on the money permission rather than being open to any signed-in
+  // member. A teacher can see who is owing; they cannot take the ledger home.
+  if (!can(role, "view_ledger")) {
+    return (
+      <PanelShell title="Your Records">
+        <EmptyState
+          title="Exporting records is for the Proprietor and Bursar"
+          description="Ask an administrator if you need a copy of the school's records."
+        />
+      </PanelShell>
+    );
+  }
+
+  async function onExport() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await repository.exportSchoolData();
+      const stamp = new Date().toISOString().slice(0, 10);
+      await exportWorkbook(
+        `${data.school.name} records ${stamp}`,
+        schoolSheets(data),
+      );
+    } catch {
+      setError(
+        "The export could not be prepared. Your records are unchanged. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <PanelShell
+      title="Your Records"
+      subtitle="Your school's records belong to your school."
+    >
+      <Card>
+        <p className="text-sm text-ink-muted">
+          This downloads everything Bursar holds for your school as one
+          spreadsheet: students and their guardians, classes and fee items,
+          bills, every payment received, expenses, other income, staff, and
+          assessment scores. Each one is a separate sheet in the file.
+        </p>
+        <p className="mt-3 text-sm text-ink-muted">
+          You can take this copy with you at any time, whether or not you
+          continue with Bursar.
+        </p>
+        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+        <Button onClick={onExport} disabled={busy} className="mt-4">
+          {busy ? "Preparing your file" : "Export all school records"}
+        </Button>
+      </Card>
+    </PanelShell>
+  );
+}
 
 function AppearancePanel() {
   return (

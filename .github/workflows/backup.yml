@@ -1,0 +1,76 @@
+name: Nightly backup
+
+# 02:00 UTC is 03:00 in Lagos, comfortably after a school day.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Dump the database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          # pg_dump must not be older than the server (Postgres 17), and the
+          # runner ships an older client, so dump from the matching image.
+          docker run --rm -e DB_URL -v "$PWD:/out" postgres:17-alpine \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges --file=/out/bursar.dump "$DB_URL"'
+          test -s bursar.dump
+
+      - name: Install age
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y age
+
+      - name: Encrypt the dump
+        env:
+          RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          # RECIPIENT is a public key. This job can write backups and cannot
+          # read any of them back, including the one it just wrote.
+          age --recipient "$RECIPIENT" --output bursar.dump.age bursar.dump
+          rm -f bursar.dump
+          test -s bursar.dump.age
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 rejects the checksum headers newer AWS CLI builds send by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          BUCKET: ${{ secrets.R2_BUCKET }}
+          ACCOUNT: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${ACCOUNT}.r2.cloudflarestorage.com"
+          DAY=$(date -u +%Y-%m-%d)
+          aws s3 cp bursar.dump.age "s3://${BUCKET}/daily/bursar-${DAY}.dump.age" \
+            --endpoint-url "$ENDPOINT"
+          # Keep one copy per month. Retention itself is an R2 lifecycle rule,
+          # not job logic, so it keeps working even if this workflow breaks.
+          if [ "$(date -u +%d)" = "01" ]; then
+            aws s3 cp bursar.dump.age "s3://${BUCKET}/monthly/bursar-${DAY}.dump.age" \
+              --endpoint-url "$ENDPOINT"
+          fi
+          rm -f bursar.dump.age
+
+      - name: Keep the project awake
+        env:
+          URL: ${{ secrets.SUPABASE_URL }}
+          ANON: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          # Free Supabase projects pause after seven days without API activity.
+          # A school on holiday is exactly that. RLS returns an empty array to
+          # the anon role, which is fine: the request is the point.
+          curl -fsS "${URL}/rest/v1/schools?select=id&limit=1" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /dev/null

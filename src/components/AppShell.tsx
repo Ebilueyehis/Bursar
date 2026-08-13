@@ -127,18 +127,21 @@ function Sidebar() {
   const { school, role, actorName } = useViewer();
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col bg-[#16212e] px-3 py-5 text-[#EDEFF2] md:flex">
-      <div className="flex items-center gap-2.5 px-2">
+    // Sticky with its own height so the sidebar holds still while a long page
+    // scrolls. `self-start` is load-bearing: a stretched flex child fills the
+    // container and has no room left to stick.
+    <aside className="hidden w-60 shrink-0 flex-col self-start bg-[#16212e] px-3 py-5 text-[#EDEFF2] md:sticky md:top-0 md:flex md:h-dvh md:overflow-y-auto">
+      <Link href="/" className="flex items-center gap-2.5 rounded-lg px-2 py-1 transition hover:bg-white/[0.05]">
         <Logo dark />
-        <div className="leading-tight">
-          <p className="font-display text-lg font-extrabold tracking-tight text-white">
+        <span className="leading-tight">
+          <span className="block font-display text-lg font-extrabold tracking-tight text-white">
             Bursar
-          </p>
-          <p className="mt-0.5 max-w-40 truncate text-xs text-[#9aa4b2]">
+          </span>
+          <span className="mt-0.5 block max-w-40 truncate text-xs text-[#9aa4b2]">
             {school?.name}
-          </p>
-        </div>
-      </div>
+          </span>
+        </span>
+      </Link>
 
       <nav className="mt-7 flex flex-col gap-0.5">
         {visibleNav(PRIMARY_NAV, role).map((item) =>
@@ -282,13 +285,13 @@ function TopBar() {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-2.5 md:px-8">
-        {/* Mobile brand (sidebar is hidden) */}
-        <div className="flex items-center gap-2.5 md:hidden">
+        {/* Mobile brand (sidebar is hidden). Doubles as the way home. */}
+        <Link href="/" className="flex items-center gap-2.5 md:hidden">
           <Logo />
-          <p className="max-w-28 truncate text-sm font-semibold text-ink">
+          <span className="max-w-28 truncate text-sm font-semibold text-ink">
             {school?.name ?? "Bursar"}
-          </p>
-        </div>
+          </span>
+        </Link>
 
         {/* Desktop greeting + screen title */}
         <div className="hidden min-w-0 md:block">
@@ -324,6 +327,54 @@ function TopBar() {
   );
 }
 
+/**
+ * A dropdown that closes the way people expect: tapping anywhere off it, or
+ * pressing Escape. The backdrop is a real element so the dismissing tap is
+ * swallowed rather than also firing whatever sits underneath the menu.
+ */
+function Menu({
+  label,
+  summaryClassName,
+  panelClassName,
+  children,
+}: {
+  label: ReactNode;
+  summaryClassName: string;
+  panelClassName: string;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <details
+      className="group relative"
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary className={summaryClassName}>{label}</summary>
+      {open && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={close}
+          className="fixed inset-0 z-20 cursor-default"
+        />
+      )}
+      <div className={panelClassName}>{children(close)}</div>
+    </details>
+  );
+}
+
 function Logo({ dark }: { dark?: boolean }) {
   return (
     <span
@@ -352,51 +403,61 @@ function TermBadge() {
   const year = (session?.name ?? "").replace("/", " / ");
 
   return (
-    <details className="group relative">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-border bg-surface-raised py-1 pl-1 pr-2 [&::-webkit-details-marker]:hidden">
-        <span className="flex size-7 items-center justify-center rounded-lg bg-primary-tint text-primary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
-            <rect x="3.5" y="5" width="17" height="16" rx="2" />
-            <path d="M3.5 9.5h17M8 3v4M16 3v4" />
-          </svg>
-        </span>
-        <span className="hidden text-left leading-tight sm:block">
-          <span className="block text-[13px] font-semibold text-ink">
-            {termLabel(term)}
+    <Menu
+      summaryClassName="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-border bg-surface-raised py-1 pl-1 pr-2 [&::-webkit-details-marker]:hidden"
+      panelClassName="absolute right-0 z-30 mt-1 w-44 rounded-lg border border-border bg-surface-raised p-1 shadow-lg"
+      label={
+        <>
+          <span className="flex size-7 items-center justify-center rounded-lg bg-primary-tint text-primary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+              <rect x="3.5" y="5" width="17" height="16" rx="2" />
+              <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+            </svg>
           </span>
-          {year && (
-            <span className="block text-[11px] tabular-nums text-ink-faint">{year}</span>
-          )}
-        </span>
-        <svg className="text-ink-faint" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </summary>
-      <div className="absolute right-0 z-30 mt-1 w-44 rounded-lg border border-border bg-surface-raised p-1 shadow-lg">
-        <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-          Switch term
-        </p>
-        {TERMS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTerm(t.value)}
-            className={cn(
-              "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm",
-              term === t.value
-                ? "bg-primary-tint font-semibold text-primary"
-                : "text-ink hover:bg-surface-sunken",
+          <span className="hidden text-left leading-tight sm:block">
+            <span className="block text-[13px] font-semibold text-ink">
+              {termLabel(term)}
+            </span>
+            {year && (
+              <span className="block text-[11px] tabular-nums text-ink-faint">{year}</span>
             )}
-          >
-            {t.label}
-            {term === t.value && (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
-                <path d="M5 13l4 4L19 7" />
-              </svg>
-            )}
-          </button>
-        ))}
-      </div>
-    </details>
+          </span>
+          <svg className="text-ink-faint" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </>
+      }
+    >
+      {(close) => (
+        <>
+          <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+            Switch term
+          </p>
+          {TERMS.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => {
+                setTerm(t.value);
+                close();
+              }}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm",
+                term === t.value
+                  ? "bg-primary-tint font-semibold text-primary"
+                  : "text-ink hover:bg-surface-sunken",
+              )}
+            >
+              {t.label}
+              {term === t.value && (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </>
+      )}
+    </Menu>
   );
 }
 
@@ -410,29 +471,33 @@ function UserChip({ name, role }: { name: string; role: Role }) {
   }
 
   return (
-    <details className="group relative">
-      <summary className="flex size-9 cursor-pointer list-none items-center justify-center rounded-full bg-primary-tint text-[11px] font-bold text-primary [&::-webkit-details-marker]:hidden">
-        {initials(name)}
-      </summary>
-      <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-surface-raised p-1 shadow-lg">
-        <div className="px-3 py-2">
-          <p className="truncate text-sm font-semibold text-ink">{name || "Account"}</p>
-          <p className="text-xs text-ink-faint">{ROLE_LABELS[role]}</p>
-        </div>
-        <Link
-          href="/profile"
-          className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-ink hover:bg-surface-sunken"
-        >
-          Profile & settings
-        </Link>
-        <button
-          onClick={signOut}
-          className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-danger hover:bg-surface-sunken"
-        >
-          Sign out
-        </button>
-      </div>
-    </details>
+    <Menu
+      summaryClassName="flex size-9 cursor-pointer list-none items-center justify-center rounded-full bg-primary-tint text-[11px] font-bold text-primary [&::-webkit-details-marker]:hidden"
+      panelClassName="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-surface-raised p-1 shadow-lg"
+      label={initials(name)}
+    >
+      {(close) => (
+        <>
+          <div className="px-3 py-2">
+            <p className="truncate text-sm font-semibold text-ink">{name || "Account"}</p>
+            <p className="text-xs text-ink-faint">{ROLE_LABELS[role]}</p>
+          </div>
+          <Link
+            href="/profile"
+            onClick={close}
+            className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-ink hover:bg-surface-sunken"
+          >
+            Profile & settings
+          </Link>
+          <button
+            onClick={signOut}
+            className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-danger hover:bg-surface-sunken"
+          >
+            Sign out
+          </button>
+        </>
+      )}
+    </Menu>
   );
 }
 
