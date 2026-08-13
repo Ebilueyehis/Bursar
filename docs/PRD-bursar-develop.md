@@ -182,14 +182,11 @@ client-side `.xlsx` via SheetJS, GitHub Actions and Cloudflare R2 for backups.
 
 ---
 
-## 5. Roadmap
+## 5. What is planned next
 
-In the order recommended as of the last update:
+**`docs/backlog.md`**, which is the single source of truth for planned work,
+ordered, sized, and carrying the reasons things were rejected.
 
-1. Finish backup setup through the restore drill (operator task, not code).
-2. Run the sales kit prompt sequence and recruit pilot schools. No engineering.
-3. Workstream B: receipt delivery and the receipt screen.
-4. Workstream C: idempotency and network honesty.
-5. Workstream D: offline reading.
-6. Live reminder delivery via an API route.
-7. Parent self-registration, redesigned around temporary registration.
+This document deliberately does not repeat it. Two lists of planned work drift
+apart, and once they do, nobody can tell which one is real. This file answers
+"what does Bursar do today"; the backlog answers "what is coming".

@@ -46,6 +46,13 @@ The PRD is the one that rots fastest and hurts most, because it is what a new
 person and an outside reader are handed. **Treat a stale PRD as a broken
 build.** If a feature ships without its PRD line, the change is incomplete.
 
+This one has teeth. `.github/workflows/docs-freshness.yml` runs on every push to
+`main` and fails the release when it contains `feat:` commits and no change to
+the PRD. It checks the release rather than the commit, because a feature is
+normally built across several `feat:` commits with the PRD updated once at the
+end. Dry-run against real history, it fails both of the releases that shipped
+before this rule existed.
+
 ---
 
 ## Standing rules

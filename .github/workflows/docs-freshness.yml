@@ -1,0 +1,59 @@
+name: Docs freshness
+
+# Fires once per release, when develop lands on main. A feature is normally
+# built across several feat: commits and the PRD is updated once at the end, so
+# checking every commit would misfire constantly. The release is the boundary
+# where the PRD has to be true.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  prd-matches-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail if this release adds features without updating the PRD
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # First push, or a force push with no usable ancestor: nothing to compare.
+          if [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous commit to compare against. Skipping."
+            exit 0
+          fi
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "Previous commit ${BEFORE} is not in this clone. Skipping."
+            exit 0
+          fi
+
+          FEATURES=$(git log --format=%s "${BEFORE}..${AFTER}" | grep -cE '^feat(\(.+\))?!?: ' || true)
+          echo "Feature commits in this release: ${FEATURES}"
+          if [ "${FEATURES}" -eq 0 ]; then
+            echo "No feature commits. The PRD cannot have gone stale."
+            exit 0
+          fi
+
+          if git diff --name-only "${BEFORE}..${AFTER}" | grep -q '^docs/PRD-bursar-develop\.md$'; then
+            echo "The PRD was updated in this release."
+            exit 0
+          fi
+
+          echo ""
+          echo "This release contains ${FEATURES} feature commit(s) and does not touch"
+          echo "docs/PRD-bursar-develop.md."
+          echo ""
+          echo "A stale PRD is treated as a broken build: it is what a new team member"
+          echo "and any outside reader are handed. Update it to describe what now"
+          echo "exists, then push the docs commit to main."
+          echo ""
+          echo "Feature commits in this release:"
+          git log --format='  %h %s' "${BEFORE}..${AFTER}" | grep -E ' feat(\(.+\))?!?: ' || true
+          exit 1
