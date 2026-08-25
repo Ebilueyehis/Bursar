@@ -58,8 +58,11 @@ export async function updateSession(request: NextRequest) {
 
   // Signed in but no school/profile yet → always route to onboarding, so a
   // profile-less user can never land on a blank dashboard (even if the OAuth
-  // callback was bypassed by a redirect-URL misconfiguration).
-  if (user && !isPublic && path !== "/onboarding") {
+  // callback was bypassed by a redirect-URL misconfiguration). Platform admin
+  // is exempt: it is not a school role and its users deliberately may have no
+  // `profiles` row at all — access there is decided by the platform_admins
+  // allowlist, checked separately by the page itself.
+  if (user && !isPublic && path !== "/onboarding" && !path.startsWith("/platform-admin")) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id")

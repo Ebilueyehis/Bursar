@@ -117,6 +117,13 @@ All implemented and live on `develop`.
   student record. See Won't: nothing is actually sent.
 - **Live receipt preview** as the entry form is filled.
 - **Installable PWA** that opens without a connection.
+- **Platform admin panel** (`/platform-admin`, operator-only, not visible to
+  any school): a read-only list of every school on the platform with
+  onboarding date, active student count, and last payment recorded. Access is
+  a server-side allowlist (`platform_admins`) checked through the admin
+  client, not a change to RLS — every school's row-level security is
+  untouched. Managing school state and impersonating a school login for
+  support are deliberately not built yet; see `docs/backlog.md`.
 
 ### 2.4 Won't have yet: known gaps, in priority order
 

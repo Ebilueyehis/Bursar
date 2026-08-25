@@ -20,7 +20,7 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
-| Platform admin panel: view every school + metrics, read-only | M | specced | Operator-only, server-side allowlist (`platform_admins`) plus the admin client; RLS untouched. Spec: `docs/superpowers/specs/2026-08-25-platform-admin-panel-design.md`. Plan: `docs/superpowers/plans/2026-08-25-platform-admin-panel.md`. |
+| Platform admin panel: view every school + metrics, read-only | M | building | Code complete on `feature/platform-admin-panel`, awaiting merge to `develop`. `/platform-admin`, gated on `platform_admins` allowlist via the admin client; RLS untouched (diff on `schema.sql` is a pure addition). Spec: `docs/superpowers/specs/2026-08-25-platform-admin-panel-design.md`. Plan: `docs/superpowers/plans/2026-08-25-platform-admin-panel.md`. Operator step still needed: add your own row to `platform_admins` by hand (see the plan's Task 1) before the panel shows anything for you. Move to `done` and drop from this file once merged, since the PRD entry already covers it. |
 | Backup setup: keys, R2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. Confirmed failing: all 11 nightly runs and the freshness check fail because the 8 GitHub secrets were never added — `SUPABASE_DB_URL` and the four `R2_*` secrets are empty in every run's logs. |
 | Restore drill, dated in the log | S | building | Until this is dated, the backup is machinery rather than a backup. |
 | Run the sales kit prompt sequence | M | agreed | `docs/sales-kit/prompt-sequence.md`. No engineering. Blocked only on the nine values to fill in. |

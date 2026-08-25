@@ -90,9 +90,13 @@ one implies the boundary is in the query, which is the wrong mental model.
 `profiles` and `audit_log` are deliberately select-only. **Never add a write
 policy to `profiles`**: it would let a user grant themselves a role.
 
-**The service-role key is server-only.** It is imported in exactly one file,
-`src/app/onboarding/actions.ts`, which is `"use server"`. If a second import site
-appears, that is a finding, not a convenience.
+**The service-role key is server-only.** It is read in exactly one module,
+`src/lib/supabase/admin.ts`. Every file that calls `createAdminClient()` must
+gate on something beyond "the caller has a valid session": onboarding gates on
+"no profile exists yet for this user"
+(`src/app/onboarding/actions.ts`), platform-admin actions gate on the
+`platform_admins` allowlist (`src/lib/admin/guard.ts`). A call site with no
+such gate is a finding, not a convenience.
 
 **Two repository implementations, one interface.** Any change to
 `src/lib/data/repository.ts` must be mirrored in both `mock.ts` and
