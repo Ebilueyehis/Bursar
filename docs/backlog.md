@@ -20,7 +20,8 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
-| Backup setup: keys, R2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. |
+| Platform admin panel: view every school + metrics, read-only | M | specced | Operator-only, server-side allowlist (`platform_admins`) plus the admin client; RLS untouched. Spec: `docs/superpowers/specs/2026-08-25-platform-admin-panel-design.md`. Plan: `docs/superpowers/plans/2026-08-25-platform-admin-panel.md`. |
+| Backup setup: keys, R2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. Confirmed failing: all 11 nightly runs and the freshness check fail because the 8 GitHub secrets were never added — `SUPABASE_DB_URL` and the four `R2_*` secrets are empty in every run's logs. |
 | Restore drill, dated in the log | S | building | Until this is dated, the backup is machinery rather than a backup. |
 | Run the sales kit prompt sequence | M | agreed | `docs/sales-kit/prompt-sequence.md`. No engineering. Blocked only on the nine values to fill in. |
 
@@ -37,6 +38,8 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
+| Platform admin: manage school/account state (suspend, edit pilot status) | M | idea | Deferred out of the v1 admin panel spec. `schools` has no status/billing columns yet; needs its own design once a second pilot school exists to shape it against. |
+| Platform admin: impersonate a school login for support | L | idea | Deferred out of the v1 admin panel spec: a platform admin acting inside a school's real financial data under another identity is a different, larger threat model (audit trail, session scope, school-side visibility) and needs its own spec. |
 | Configurable assessment maxes | S | agreed | CA1 20, CA2 20, Exam 60 are fixed in `src/lib/records/grading.ts`. A school marking differently cannot use Records at all. |
 | Printable report-card layout | M | agreed | Deferred by the product owner to a future iteration. |
 | Parent self-registration (QR, link, approval) | L | idea | Needs redesign: temporary registration shipped and overlaps the original idea. |
