@@ -44,9 +44,12 @@ meaningful scale.
 
 The nightly dump is compressed and encrypted, so each object is smaller than the
 live database. At 35 daily copies and 12 monthly copies, a single school stays
-comfortably inside Cloudflare R2's 10 GB free allowance for years. R2 charges
-nothing for egress, which matters because the day a restore is needed is a bad
-day to meet a transfer bill.
+comfortably inside Backblaze B2's 10 GB free storage allowance for years
+(moved off Cloudflare R2 after repeated dashboard outages blocked setup; see
+`docs/runbooks/backup-setup.md`). B2's free egress allowance (three times the
+average amount stored, each month) dwarfs what a restore actually pulls down
+at this size, so the day a restore is needed is not also the day to meet a
+transfer bill.
 
 ## When to move to Supabase Pro
 

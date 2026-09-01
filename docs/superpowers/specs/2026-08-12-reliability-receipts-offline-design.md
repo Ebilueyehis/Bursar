@@ -5,6 +5,12 @@
 **Covers:** five problems raised against the current build, plus two refinements
 to the first proposal.
 
+> **Update, 2026-09-01:** the backup host named below (Cloudflare R2) was
+> replaced with Backblaze B2 after repeated Cloudflare dashboard outages
+> blocked initial setup. The reasoning here for *why a backup at all* still
+> holds; for the current storage provider and setup steps, see
+> `docs/runbooks/backup-setup.md`.
+
 ---
 
 ## 1. The problems
