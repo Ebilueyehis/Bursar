@@ -89,9 +89,11 @@ into the domain: read it first.
 ## Operational notes
 
 Backups run nightly from GitHub Actions: `pg_dump`, encrypted to an `age`
-recipient public key, stored in Cloudflare R2. The CI job can write backups and
-cannot read one back. **The private key is a founder-held secret with no
-recovery path**: lose it and every backup ever taken is unreadable.
+recipient public key, stored in Backblaze B2 (moved off Cloudflare R2 after
+repeated dashboard outages blocked setup; see `docs/runbooks/backup-setup.md`).
+The CI job can write backups and cannot read one back. **The private key is a
+founder-held secret with no recovery path**: lose it and every backup ever
+taken is unreadable.
 
 Scheduled workflows only fire from `main`, and they do nothing until the eight
 secrets in `docs/runbooks/backup-setup.md` exist. A backup is not real until a

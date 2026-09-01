@@ -155,7 +155,7 @@ All implemented and live on `develop`.
   secrets, fail-closed auth, HTML-escaped user data in generated documents.
   Standing rule: full adversarial audit before and after every build.
 - **Continuity:** nightly `pg_dump` encrypted to an `age` recipient public key
-  and stored in Cloudflare R2, a weekly freshness check that fails loudly, a
+  and stored in Backblaze B2, a weekly freshness check that fails loudly, a
   keep-alive that stops the free Supabase project pausing, and a restore drill
   that must be dated in `docs/runbooks/restore.md` before the backup counts as
   real. Setup steps are in `docs/runbooks/backup-setup.md`.
@@ -178,7 +178,7 @@ All implemented and live on `develop`.
 
 Next.js 16 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS v4
 (CSS-first config, no `tailwind.config.js`), Supabase (Postgres 17 + Auth + RLS),
-client-side `.xlsx` via SheetJS, GitHub Actions and Cloudflare R2 for backups.
+client-side `.xlsx` via SheetJS, GitHub Actions and Backblaze B2 for backups.
 
 ---
 

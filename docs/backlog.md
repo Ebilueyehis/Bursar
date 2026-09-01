@@ -20,7 +20,8 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
-| Backup setup: keys, R2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. |
+| Backup storage: moved Cloudflare R2 to Backblaze B2 | S | done | Repeated Cloudflare dashboard outages blocked setup with no workaround. Workflows, both runbooks, README, PRD and capacity-and-cost updated in the same change; historical spec/plan docs got a forward-pointer note rather than a rewrite. |
+| Backup setup: keys, B2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. Any leftover `R2_*` secrets from the earlier attempt should be deleted from GitHub once the new `B2_*` ones are added. |
 | Restore drill, dated in the log | S | building | Until this is dated, the backup is machinery rather than a backup. |
 | Run the sales kit prompt sequence | M | agreed | `docs/sales-kit/prompt-sequence.md`. No engineering. Blocked only on the nine values to fill in. |
 

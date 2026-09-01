@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Update, 2026-09-01:** the R2 details throughout this plan (secret names,
+> endpoint, bucket setup) are historical. Storage moved to Backblaze B2 after
+> repeated Cloudflare dashboard outages blocked initial setup; the workflow
+> logic below is otherwise unchanged. Current setup steps are in
+> `docs/runbooks/backup-setup.md`.
+
 **Goal:** No single failure, including one of our own making, can destroy a school's payment history.
 
 **Architecture:** A nightly GitHub Actions job dumps the Supabase database, encrypts it to an `age` recipient public key so the runner can write backups but never read one, and uploads it to Cloudflare R2. A second weekly job fails loudly if no recent backup exists. Inside the app, a Profile panel exports the whole school to a multi-sheet workbook, which is the copy the proprietor can hold.

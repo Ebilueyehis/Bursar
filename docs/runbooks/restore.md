@@ -8,18 +8,22 @@ into CI, into a chat window, or into any tool that keeps logs.
 
 ## 1. Fetch the backup
 
+Storage is Backblaze B2 (see `docs/runbooks/backup-setup.md` for why it is
+not Cloudflare R2). `<REGION>` is the segment from the bucket's endpoint,
+e.g. `us-west-004` — find it in the B2 console under the bucket's details.
+
 ```bash
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_DEFAULT_REGION=auto
+export AWS_ACCESS_KEY_ID=...        # the B2 application key's keyID
+export AWS_SECRET_ACCESS_KEY=...    # the B2 application key's applicationKey
+export AWS_DEFAULT_REGION=<REGION>
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
 export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 
 aws s3 ls s3://bursar-backups/daily/ \
-  --endpoint-url https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+  --endpoint-url https://s3.<REGION>.backblazeb2.com
 
 aws s3 cp s3://bursar-backups/daily/bursar-<DATE>.dump.age . \
-  --endpoint-url https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+  --endpoint-url https://s3.<REGION>.backblazeb2.com
 ```
 
 ## 2. Decrypt

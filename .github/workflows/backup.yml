@@ -39,23 +39,25 @@ jobs:
           rm -f bursar.dump
           test -s bursar.dump.age
 
-      - name: Upload to R2
+      - name: Upload to Backblaze B2
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          # R2 rejects the checksum headers newer AWS CLI builds send by default.
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.B2_REGION }}
+          # Belt and braces: some AWS CLI builds send checksum headers B2 has
+          # only supported since mid-2025, and at least one CLI version keeps
+          # sending them even with this set. Cheap to leave in either way.
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-          BUCKET: ${{ secrets.R2_BUCKET }}
-          ACCOUNT: ${{ secrets.R2_ACCOUNT_ID }}
+          BUCKET: ${{ secrets.B2_BUCKET }}
+          REGION: ${{ secrets.B2_REGION }}
         run: |
           set -euo pipefail
-          ENDPOINT="https://${ACCOUNT}.r2.cloudflarestorage.com"
+          ENDPOINT="https://s3.${REGION}.backblazeb2.com"
           DAY=$(date -u +%Y-%m-%d)
           aws s3 cp bursar.dump.age "s3://${BUCKET}/daily/bursar-${DAY}.dump.age" \
             --endpoint-url "$ENDPOINT"
-          # Keep one copy per month. Retention itself is an R2 lifecycle rule,
+          # Keep one copy per month. Retention itself is a B2 lifecycle rule,
           # not job logic, so it keeps working even if this workflow breaks.
           if [ "$(date -u +%d)" = "01" ]; then
             aws s3 cp bursar.dump.age "s3://${BUCKET}/monthly/bursar-${DAY}.dump.age" \
