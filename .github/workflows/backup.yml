@@ -72,7 +72,17 @@ jobs:
         run: |
           set -euo pipefail
           # Free Supabase projects pause after seven days without API activity.
-          # A school on holiday is exactly that. RLS returns an empty array to
-          # the anon role, which is fine: the request is the point.
-          curl -fsS "${URL}/rest/v1/schools?select=id&limit=1" \
-            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /dev/null
+          # A school on holiday is exactly that.
+          #
+          # This does NOT query a table. Every RLS policy in schema.sql calls
+          # auth_school_id()/auth_role(), and EXECUTE on those is granted only
+          # to `authenticated`, never `anon` — so an anon-only request against
+          # any RLS-protected table fails RLS evaluation itself with
+          # "permission denied for function auth_school_id" (42501), not the
+          # empty result this step actually wants. That is correct behaviour
+          # for the security boundary (anon truly cannot read school data,
+          # it cannot even ask the question), but it means this step has to
+          # touch the project without touching a table. The Auth service's
+          # health endpoint does exactly that: no RLS, no table grant, still
+          # real API traffic against the project.
+          curl -fsS "${URL}/auth/v1/health" -H "apikey: ${ANON}" -o /dev/null
