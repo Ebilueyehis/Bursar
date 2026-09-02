@@ -20,8 +20,7 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
-| Backup storage: moved Cloudflare R2 to Backblaze B2 | S | done | Repeated Cloudflare dashboard outages blocked setup with no workaround. Workflows, both runbooks, README, PRD and capacity-and-cost updated in the same change; historical spec/plan docs got a forward-pointer note rather than a rewrite. |
-| Backup setup: keys, B2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. Any leftover `R2_*` secrets from the earlier attempt should be deleted from GitHub once the new `B2_*` ones are added. |
+| Backup setup: keys, B2 bucket, secrets, first run | S | building | Operator task, not code. Steps in `docs/runbooks/backup-setup.md`. B2 secrets are recognised now (merged to `main` and confirmed in the run logs) and the job reaches `pg_dump` before failing, so the R2-to-B2 move itself is done and dropped from this file. Current blocker: `pg_dump` connects to the right session-pooler host but gets `FATAL: password authentication failed for user "postgres"` (two consecutive manual runs, 2026-09-01, same error) — the `SUPABASE_DB_URL` secret's username is almost certainly bare `postgres` instead of the pooler-required `postgres.<project-ref>`, or the password is stale/has an unescaped special character. Fix is re-copying the Session pooler URI from Supabase (Project Settings → Database → Connection string) and updating the GitHub secret; nothing in the workflow file itself is wrong. |
 | Restore drill, dated in the log | S | building | Until this is dated, the backup is machinery rather than a backup. |
 | Run the sales kit prompt sequence | M | agreed | `docs/sales-kit/prompt-sequence.md`. No engineering. Blocked only on the nine values to fill in. |
 
