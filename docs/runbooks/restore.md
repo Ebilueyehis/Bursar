@@ -39,12 +39,46 @@ that recipient can be read. There is no other route in.
 ## 3. Restore into a scratch project
 
 Never restore into the live project as a drill. Create a throwaway Supabase
-project, take its direct connection string, then:
+project, then restore with `pg_restore` version 17 or newer — it must not be
+older than the Postgres 17 the dump came from, same reasoning as the backup
+job's own `pg_dump`. This is the only real requirement; everything else below
+is just how to satisfy it.
+
+For `<SCRATCH_DB_URL>`, use the scratch project's **direct connection
+string** if your network gives you IPv6 (most home and office connections
+do); if it times out, use its **session pooler** string instead (same shape
+CI uses, guaranteed to work over IPv4) — both hold a session, which
+`pg_restore` needs.
+
+**Native client (recommended — nothing to run in the background, nothing
+Windows-specific to fight with):**
+
+Install PostgreSQL 17's client tools once, then this is a single command
+with no containers, no daemons, and no volume-mount path quoting to get
+wrong:
+
+| OS | Install |
+| --- | --- |
+| macOS | `brew install postgresql@17` |
+| Windows | The [postgresql.org Windows installer](https://www.postgresql.org/download/windows/) — uncheck everything except "Command Line Tools" if you don't want the full server |
+| Linux | `sudo apt install postgresql-client-17` (Debian/Ubuntu), or your distro's equivalent |
+
+```bash
+pg_restore --clean --if-exists --no-owner --no-privileges \
+  --dbname="<SCRATCH_DB_URL>" bursar.dump
+```
+
+**Docker (alternative, if you already have it running and prefer not to
+install anything locally):**
 
 ```bash
 docker run --rm -e DB_URL="<SCRATCH_DB_URL>" -v "$PWD:/in" postgres:17-alpine \
   sh -c 'pg_restore --clean --if-exists --no-owner --no-privileges --dbname="$DB_URL" /in/bursar.dump'
 ```
+
+Needs Docker Desktop actually running first (on Windows, its WSL2 backend
+too) — confirm `docker ps` returns cleanly before trying this, rather than
+debugging the restore command when the real problem is the daemon.
 
 ## 4. Prove the data came back
 
