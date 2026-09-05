@@ -286,11 +286,19 @@ create table platform_admins (
   created_at timestamptz not null default now()
 );
 alter table platform_admins enable row level security;
--- Deliberately no policy and no grant to anon/authenticated below: invisible
--- to every ordinary client request. Readable only via the service-role
--- client, which bypasses RLS and already gets full access to new tables
--- through the "alter default privileges ... grant ... to service_role"
--- statement further down this file.
+-- Deliberately no policy and no SELECT/INSERT/UPDATE/DELETE grant to
+-- anon/authenticated below: invisible to every ordinary client request.
+-- Readable only via the service-role client, which bypasses RLS and already
+-- gets full access to new tables through the "alter default privileges ...
+-- grant ... to service_role" statement further down this file.
+--
+-- Postgres still grants TRUNCATE/REFERENCES/TRIGGER to PUBLIC by default on
+-- any new table, independent of the SELECT/etc. grants above — the same
+-- "data-destruction primitive" the global revoke further down this file
+-- strips from every other table. That global revoke ran once, historically,
+-- before this table existed, so it never applied here; strip it explicitly
+-- instead of relying on statement order.
+revoke all on platform_admins from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
