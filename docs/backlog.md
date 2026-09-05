@@ -20,7 +20,6 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
-| Platform admin panel: view every school + metrics, read-only | M | building | Merged into `develop`. `/platform-admin`, gated on `platform_admins` allowlist via the admin client; RLS untouched (diff on `schema.sql` is a pure addition). Spec: `docs/superpowers/specs/2026-08-25-platform-admin-panel-design.md`. Plan: `docs/superpowers/plans/2026-08-25-platform-admin-panel.md`. Not yet verified live: the schema change hasn't been applied to the Supabase project and nobody has an admin row yet, so the page has never been clicked through in a browser. Stays out of `main` until that's done. Move to `done` and drop from this file once verified, since the PRD entry already covers it. |
 | Restore drill, dated in the log | S | building | Nightly backup confirmed green end to end 2026-09-02 (Backblaze B2 upload and keep-alive both pass; a real dated object exists in `daily/`), so this is the one step left before the backup counts as real rather than machinery. Steps in `docs/runbooks/restore.md`; record the drill in its log table when run. |
 | Run the sales kit prompt sequence | M | agreed | `docs/sales-kit/prompt-sequence.md`. No engineering. Blocked only on the nine values to fill in. |
 
