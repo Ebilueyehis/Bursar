@@ -36,6 +36,8 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
+| Platform admin: manage school/account state (suspend, edit pilot status) | M | idea | Deferred out of the v1 admin panel spec. `schools` has no status/billing columns yet; needs its own design once a second pilot school exists to shape it against. |
+| Platform admin: impersonate a school login for support | L | idea | Deferred out of the v1 admin panel spec: a platform admin acting inside a school's real financial data under another identity is a different, larger threat model (audit trail, session scope, school-side visibility) and needs its own spec. |
 | Configurable assessment maxes | S | agreed | CA1 20, CA2 20, Exam 60 are fixed in `src/lib/records/grading.ts`. A school marking differently cannot use Records at all. |
 | Printable report-card layout | M | agreed | Deferred by the product owner to a future iteration. |
 | Parent self-registration (QR, link, approval) | L | idea | Needs redesign: temporary registration shipped and overlaps the original idea. |

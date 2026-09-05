@@ -274,6 +274,33 @@ create table assessments (
 create index on assessments (school_id, term);
 
 -- ---------------------------------------------------------------------------
+-- Platform administration: operator-only, cross-school (Bursar v1.2)
+-- ---------------------------------------------------------------------------
+-- Not a school-scoped table and not reachable through RLS at all: see
+-- docs/superpowers/specs/2026-08-25-platform-admin-panel-design.md. Membership
+-- is added by hand via SQL, the same care taken with any row that grants
+-- privilege.
+create table platform_admins (
+  id         uuid primary key references auth.users(id) on delete cascade,
+  note       text,
+  created_at timestamptz not null default now()
+);
+alter table platform_admins enable row level security;
+-- Deliberately no policy and no SELECT/INSERT/UPDATE/DELETE grant to
+-- anon/authenticated below: invisible to every ordinary client request.
+-- Readable only via the service-role client, which bypasses RLS and already
+-- gets full access to new tables through the "alter default privileges ...
+-- grant ... to service_role" statement further down this file.
+--
+-- Postgres still grants TRUNCATE/REFERENCES/TRIGGER to PUBLIC by default on
+-- any new table, independent of the SELECT/etc. grants above — the same
+-- "data-destruction primitive" the global revoke further down this file
+-- strips from every other table. That global revoke ran once, historically,
+-- before this table existed, so it never applied here; strip it explicitly
+-- instead of relying on statement order.
+revoke all on platform_admins from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Convenience view: a student's outstanding balance for a term
 -- ---------------------------------------------------------------------------
 -- security_invoker = on is REQUIRED: without it the view runs as its owner

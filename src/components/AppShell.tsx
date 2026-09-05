@@ -95,8 +95,10 @@ function initials(name: string): string {
     : "•";
 }
 
-/** Public / auth routes render without the app chrome (sidebar, nav). */
-const BARE_ROUTES = ["/login", "/onboarding", "/register", "/auth"];
+/** Public / auth routes render without the app chrome (sidebar, nav). Platform
+ * admin is operator-only and reached by URL, never a nav item, so it stays
+ * out of the school-scoped chrome too. */
+const BARE_ROUTES = ["/login", "/onboarding", "/register", "/auth", "/platform-admin"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { ready } = useViewer();
