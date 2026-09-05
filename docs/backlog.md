@@ -20,6 +20,7 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
+| Platform admin panel: view every school + metrics, read-only | M | building | Merged into `develop`. `/platform-admin`, gated on `platform_admins` allowlist via the admin client; RLS untouched (diff on `schema.sql` is a pure addition). Spec: `docs/superpowers/specs/2026-08-25-platform-admin-panel-design.md`. Plan: `docs/superpowers/plans/2026-08-25-platform-admin-panel.md`. Not yet verified live: the schema change hasn't been applied to the Supabase project and nobody has an admin row yet, so the page has never been clicked through in a browser. Stays out of `main` until that's done. Move to `done` and drop from this file once verified, since the PRD entry already covers it. |
 | Restore drill, dated in the log | S | building | Nightly backup confirmed green end to end 2026-09-02 (Backblaze B2 upload and keep-alive both pass; a real dated object exists in `daily/`), so this is the one step left before the backup counts as real rather than machinery. Steps in `docs/runbooks/restore.md`; record the drill in its log table when run. |
 | Run the sales kit prompt sequence | M | agreed | `docs/sales-kit/prompt-sequence.md`. No engineering. Blocked only on the nine values to fill in. |
 
@@ -36,6 +37,8 @@ down, and why, is worth as much as knowing what was built.
 
 | Item | Size | Status | Notes |
 | --- | --- | --- | --- |
+| Platform admin: manage school/account state (suspend, edit pilot status) | M | idea | Deferred out of the v1 admin panel spec. `schools` has no status/billing columns yet; needs its own design once a second pilot school exists to shape it against. |
+| Platform admin: impersonate a school login for support | L | idea | Deferred out of the v1 admin panel spec: a platform admin acting inside a school's real financial data under another identity is a different, larger threat model (audit trail, session scope, school-side visibility) and needs its own spec. |
 | Configurable assessment maxes | S | agreed | CA1 20, CA2 20, Exam 60 are fixed in `src/lib/records/grading.ts`. A school marking differently cannot use Records at all. |
 | Printable report-card layout | M | agreed | Deferred by the product owner to a future iteration. |
 | Parent self-registration (QR, link, approval) | L | idea | Needs redesign: temporary registration shipped and overlaps the original idea. |
