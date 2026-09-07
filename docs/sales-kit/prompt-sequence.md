@@ -22,7 +22,7 @@ Replace every one of these in the prompts below. They appear as `[[TOKEN]]`.
 | Token | What it is |
 | --- | --- |
 | Collins Ebilueye | Your name as it appears on the contact page |
-| `[[FOUNDER_TITLE]]` | e.g. Founder |
+| Operations/Product Lead | The role fronting Bursar to prospects, shown next to the name wherever contact/signature blocks appear |
 | +234 806 931 6819 | WhatsApp number, international format |
 | ebilueyehis@gmail.com | Contact email |
 | `[[WEBSITE]]` | Domain, or delete every reference if there is none yet |
@@ -246,8 +246,8 @@ blank rather than an invented fact, which is the correct failure mode here.
 >     first receipt. Give a realistic time against each step.
 > 16. The pilot. The offer, what is free, what is asked in return, and the price
 >     after.
-> 17. Next steps and contact. Collins Ebilueye, +234 806 931 6819,
->     ebilueyehis@gmail.com, `[[WEBSITE]]`,Lagos State.
+> 17. Next steps and contact. Collins Ebilueye, Operations/Product Lead,
+>     +234 806 931 6819, ebilueyehis@gmail.com, `[[WEBSITE]]`,Lagos State.
 >
 > Rules: no slide carries more than 40 words of body copy, counting labels and
 > table cells as data rather than copy, which is what lets slides 7 and 8 be dense.
@@ -453,7 +453,8 @@ blank rather than an invented fact, which is the correct failure mode here.
 >    continue.
 > 8. Next steps. Three numbered steps with a blank date beside each. End with a
 >    two column signature block, one side for the proprietor and one for
->    Collins Ebilueye, each with name, signature and date lines.
+>    Collins Ebilueye, Operations/Product Lead, each with name, title,
+>    signature and date lines.
 > 9. Contact block.
 >
 > Same typography and colour rules as the profile document. Verify by rendering to
